@@ -1,0 +1,100 @@
+import { Router } from "express";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { z } from "zod";
+import { config } from "../config.js";
+
+const router = Router();
+
+const ENV_PATH = path.resolve(process.cwd(), ".env");
+
+const Body = z.object({
+  poolDir: z.string().optional(),
+  libraryDir: z.string().optional(),
+  openaiApiKey: z.string().optional(),
+});
+
+function expandHome(p: string): string {
+  if (!p) return p;
+  if (p === "~" || p.startsWith("~/")) {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
+}
+
+function readEnvFile(): Record<string, string> {
+  if (!fs.existsSync(ENV_PATH)) return {};
+  const content = fs.readFileSync(ENV_PATH, "utf8");
+  const out: Record<string, string> = {};
+  for (const line of content.split(/\r?\n/)) {
+    if (!line || line.trim().startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    if (key) out[key] = value;
+  }
+  return out;
+}
+
+function writeEnvFile(values: Record<string, string>) {
+  const known = ["OPENAI_API_KEY", "POOL_DIR", "LIBRARY_DIR", "PORT"];
+  const lines: string[] = [];
+  for (const k of known) {
+    if (k in values) lines.push(`${k}=${values[k] ?? ""}`);
+  }
+  for (const k of Object.keys(values)) {
+    if (!known.includes(k)) lines.push(`${k}=${values[k] ?? ""}`);
+  }
+  fs.writeFileSync(ENV_PATH, lines.join("\n") + "\n");
+}
+
+router.post("/settings", (req, res) => {
+  const parsed = Body.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const env = readEnvFile();
+  if (parsed.data.poolDir !== undefined) {
+    const p = expandHome(parsed.data.poolDir.trim());
+    if (p) {
+      try {
+        fs.mkdirSync(p, { recursive: true });
+      } catch (err) {
+        res.status(400).json({ error: `Could not create POOL_DIR: ${err}` });
+        return;
+      }
+    }
+    env.POOL_DIR = p;
+  }
+  if (parsed.data.libraryDir !== undefined) {
+    const p = expandHome(parsed.data.libraryDir.trim());
+    if (p) {
+      try {
+        fs.mkdirSync(p, { recursive: true });
+      } catch (err) {
+        res.status(400).json({ error: `Could not create LIBRARY_DIR: ${err}` });
+        return;
+      }
+    }
+    env.LIBRARY_DIR = p;
+  }
+  if (parsed.data.openaiApiKey !== undefined) {
+    env.OPENAI_API_KEY = parsed.data.openaiApiKey.trim();
+  }
+  writeEnvFile(env);
+
+  res.json({
+    ok: true,
+    note: "Saved. Restart the dev server (Ctrl+C, npm run dev) to apply.",
+    current: {
+      poolDir: config.poolDir,
+      libraryDir: config.libraryDir,
+      hasOpenAIKey: Boolean(config.openaiApiKey),
+    },
+  });
+});
+
+export default router;
