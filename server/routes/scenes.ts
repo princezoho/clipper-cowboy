@@ -1,7 +1,7 @@
 import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { POOL_CACHE_DIR } from "../config.js";
+import { config } from "../config.js";
 import { detectScenes, getDuration } from "../ffmpeg.js";
 import { resolvePoolId } from "./pool.js";
 
@@ -13,7 +13,7 @@ export interface SceneSegment {
 const router = Router();
 
 function cachePath(id: string): string {
-  return path.join(POOL_CACHE_DIR, `${id}.scenes.json`);
+  return path.join(config.sceneCacheDir, `${id}.scenes.json`);
 }
 
 router.get("/scenes/:id", async (req, res) => {

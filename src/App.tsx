@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ExportMode,
   HealthResponse,
   LibraryItem,
   PoolItem,
@@ -9,10 +10,24 @@ import {
 } from "./lib/api";
 import PoolView from "./views/PoolView";
 import LibraryView from "./views/LibraryView";
+import CharactersView from "./views/CharactersView";
 import EditorOverlay from "./views/EditorOverlay";
+import ReviewMode from "./views/ReviewMode";
 import SettingsModal from "./views/SettingsModal";
 
-type Tab = "pool" | "library";
+type Tab = "pool" | "library" | "characters";
+
+const EXPORT_MODE_STORAGE_KEY = "clipcataloger.exportMode";
+
+function loadStoredExportMode(): ExportMode {
+  try {
+    const v = localStorage.getItem(EXPORT_MODE_STORAGE_KEY);
+    if (v === "clip" || v === "source" || v === "bundle") return v;
+  } catch {
+    // ignore
+  }
+  return "clip";
+}
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("pool");
@@ -20,10 +35,13 @@ export default function App() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [editing, setEditing] = useState<PoolItem | null>(null);
+  const [reviewing, setReviewing] = useState<PoolItem | null>(null);
+  const [exportMode, setExportMode] = useState<ExportMode>(loadStoredExportMode());
   const [showSettings, setShowSettings] = useState(false);
   const [loadingPool, setLoadingPool] = useState(false);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [characterReloadKey, setCharacterReloadKey] = useState(0);
 
   async function reloadPool() {
     setLoadingPool(true);
@@ -51,6 +69,10 @@ export default function App() {
     }
   }
 
+  function reloadCharacters() {
+    setCharacterReloadKey((k) => k + 1);
+  }
+
   useEffect(() => {
     fetchHealth().then(setHealth).catch((e) => setError(String(e)));
     reloadPool();
@@ -59,6 +81,16 @@ export default function App() {
 
   function handleExportComplete() {
     reloadLibrary();
+    reloadPool();
+  }
+
+  function persistExportMode(m: ExportMode) {
+    setExportMode(m);
+    try {
+      localStorage.setItem(EXPORT_MODE_STORAGE_KEY, m);
+    } catch {
+      // ignore
+    }
   }
 
   return (
@@ -69,18 +101,20 @@ export default function App() {
           <nav className="flex items-center gap-1 rounded-lg bg-ink-900 p-1">
             <TabButton active={tab === "pool"} onClick={() => setTab("pool")}>
               Pool
-              <span className="ml-2 rounded bg-ink-800 px-1.5 py-0.5 text-xs text-ink-400">
-                {pool.length}
-              </span>
+              <Counter n={pool.length} />
             </TabButton>
             <TabButton
               active={tab === "library"}
               onClick={() => setTab("library")}
             >
               Library
-              <span className="ml-2 rounded bg-ink-800 px-1.5 py-0.5 text-xs text-ink-400">
-                {library.length}
-              </span>
+              <Counter n={library.length} />
+            </TabButton>
+            <TabButton
+              active={tab === "characters"}
+              onClick={() => setTab("characters")}
+            >
+              Characters
             </TabButton>
           </nav>
         </div>
@@ -88,8 +122,7 @@ export default function App() {
         <div className="flex items-center gap-3 text-xs text-ink-400">
           {health && (
             <>
-              <FolderChip label="Pool" path={health.poolDir} />
-              <FolderChip label="Library" path={health.libraryDir} />
+              <FolderChip label="Project" path={health.projectDir} />
               <span
                 className={
                   health.hasOpenAIKey
@@ -111,6 +144,7 @@ export default function App() {
             onClick={() => {
               reloadPool();
               reloadLibrary();
+              reloadCharacters();
             }}
           >
             Refresh
@@ -137,17 +171,25 @@ export default function App() {
       )}
 
       <main className="flex-1 overflow-y-auto scrollbar-thin">
-        {tab === "pool" ? (
+        {tab === "pool" && (
           <PoolView
             items={pool}
             loading={loadingPool}
             onPick={(item) => setEditing(item)}
+            onAutoCut={(item) => setReviewing(item)}
           />
-        ) : (
+        )}
+        {tab === "library" && (
           <LibraryView
             items={library}
             loading={loadingLibrary}
             onChanged={reloadLibrary}
+          />
+        )}
+        {tab === "characters" && (
+          <CharactersView
+            reloadKey={characterReloadKey}
+            onChanged={reloadCharacters}
           />
         )}
       </main>
@@ -157,6 +199,22 @@ export default function App() {
           source={editing}
           onClose={() => setEditing(null)}
           onExported={handleExportComplete}
+          onCharactersChanged={reloadCharacters}
+          hasOpenAIKey={health?.hasOpenAIKey ?? false}
+        />
+      )}
+
+      {reviewing && (
+        <ReviewMode
+          source={reviewing}
+          defaultExportMode={exportMode}
+          onExportModeChange={persistExportMode}
+          onClose={() => {
+            setReviewing(null);
+            reloadPool();
+          }}
+          onExported={handleExportComplete}
+          onCharactersChanged={reloadCharacters}
           hasOpenAIKey={health?.hasOpenAIKey ?? false}
         />
       )}
@@ -171,6 +229,14 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+function Counter({ n }: { n: number }) {
+  return (
+    <span className="ml-2 rounded bg-ink-800 px-1.5 py-0.5 text-xs text-ink-400">
+      {n}
+    </span>
   );
 }
 
@@ -199,7 +265,7 @@ function TabButton({
 }
 
 function FolderChip({ label, path }: { label: string; path: string }) {
-  const short = path.length > 40 ? "…" + path.slice(-40) : path;
+  const short = path.length > 48 ? "…" + path.slice(-48) : path;
   return (
     <span
       className="hidden md:inline-flex items-center gap-1 rounded-full bg-ink-800 px-2 py-0.5 font-mono text-[11px] text-ink-300"

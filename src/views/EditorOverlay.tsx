@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Character,
+  ExportMode,
+  MatchedCharacter,
   PoolItem,
+  SampleFrame,
   SceneSegment,
+  UnknownPerson,
+  addCharacterRef,
   captionClip,
+  createCharacter,
   detectScenes,
   exportClip,
+  fetchCharacters,
   fetchScenes,
   formatTime,
 } from "../lib/api";
@@ -17,6 +25,7 @@ interface Props {
   source: PoolItem;
   onClose: () => void;
   onExported: () => void;
+  onCharactersChanged?: () => void;
   hasOpenAIKey: boolean;
 }
 
@@ -26,6 +35,7 @@ export default function EditorOverlay({
   source,
   onClose,
   onExported,
+  onCharactersChanged,
   hasOpenAIKey,
 }: Props) {
   const playerRef = useRef<VideoPlayerHandle>(null);
@@ -43,12 +53,28 @@ export default function EditorOverlay({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [characters, setCharacters] = useState<MatchedCharacter[]>([]);
+  const [unknownPeople, setUnknownPeople] = useState<UnknownPerson[]>([]);
+  const [sampleFrames, setSampleFrames] = useState<SampleFrame[]>([]);
+  const [captionCacheKey, setCaptionCacheKey] = useState<string | null>(null);
+
+  const [allCharacters, setAllCharacters] = useState<Character[]>([]);
+  const [exportMode, setExportMode] = useState<ExportMode>("clip");
   const [captioning, setCaptioning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const captionAbort = useRef<AbortController | null>(null);
+
+  async function reloadCharacters() {
+    try {
+      const r = await fetchCharacters();
+      setAllCharacters(r.items);
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +83,7 @@ export default function EditorOverlay({
       setScenes(cached.segments);
       if (cached.duration && !duration) setDuration(cached.duration);
     });
+    reloadCharacters();
     return () => {
       cancelled = true;
     };
@@ -118,6 +145,10 @@ export default function EditorOverlay({
         setName(c.name);
         setDescription(c.description);
         setTags(c.tags);
+        setCharacters(c.characters);
+        setUnknownPeople(c.unknownPeople);
+        setSampleFrames(c.sampleFrames);
+        setCaptionCacheKey(c.cacheKey);
       } catch (err) {
         if (!ac.signal.aborted) setError(String(err));
       } finally {
@@ -136,13 +167,19 @@ export default function EditorOverlay({
       setError("Give the clip a name first.");
       return;
     }
-    if (outT - inT < 0.1) {
+    if (exportMode !== "source" && outT - inT < 0.1) {
       setError("Selection is too short.");
       return;
     }
     setExporting(true);
     setError(null);
-    setStatusMsg("Exporting…");
+    setStatusMsg(
+      exportMode === "bundle"
+        ? "Exporting clip + cloning source…"
+        : exportMode === "source"
+        ? "Cloning source…"
+        : "Exporting…"
+    );
     try {
       const item = await exportClip({
         sourceId: source.id,
@@ -151,6 +188,8 @@ export default function EditorOverlay({
         name,
         description,
         tags,
+        characters,
+        mode: exportMode,
       });
       setStatusMsg(`Exported as ${item.filename} (${item.mode})`);
       onExported();
@@ -173,8 +212,10 @@ export default function EditorOverlay({
     name,
     description,
     tags,
+    characters,
     inT,
     outT,
+    exportMode,
     source.id,
     onExported,
     scenes,
@@ -182,6 +223,61 @@ export default function EditorOverlay({
     selectScene,
     onClose,
   ]);
+
+  // ---- Unknown-people actions ----------------------------------------------
+
+  function dismissUnknown(idx: number) {
+    setUnknownPeople((arr) => arr.filter((_, i) => i !== idx));
+  }
+
+  async function nameUnknown(idx: number, newName: string) {
+    if (!newName.trim() || !captionCacheKey) return;
+    try {
+      const newChar = await createCharacter({ name: newName.trim() });
+      await addCharacterRef(newChar.id, {
+        cacheKey: captionCacheKey,
+        frameIndex: unknownPeople[idx].frameIndex,
+      });
+      setCharacters((cs) =>
+        cs.find((c) => c.id === newChar.id)
+          ? cs
+          : [...cs, { id: newChar.id, name: newChar.name }]
+      );
+      dismissUnknown(idx);
+      reloadCharacters();
+      onCharactersChanged?.();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function connectUnknown(idx: number, characterId: string) {
+    if (!captionCacheKey) return;
+    const target = allCharacters.find((c) => c.id === characterId);
+    if (!target) return;
+    try {
+      await addCharacterRef(target.id, {
+        cacheKey: captionCacheKey,
+        frameIndex: unknownPeople[idx].frameIndex,
+      });
+      setCharacters((cs) =>
+        cs.find((c) => c.id === target.id)
+          ? cs
+          : [...cs, { id: target.id, name: target.name }]
+      );
+      dismissUnknown(idx);
+      reloadCharacters();
+      onCharactersChanged?.();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  function removeMatched(id: string) {
+    setCharacters((cs) => cs.filter((c) => c.id !== id));
+  }
+
+  // ---- Hotkeys -------------------------------------------------------------
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -340,6 +436,22 @@ export default function EditorOverlay({
           </div>
         </div>
 
+        <CharacterStrip
+          characters={characters}
+          allCharacters={allCharacters}
+          unknownPeople={unknownPeople}
+          sampleFrames={sampleFrames}
+          onRemove={removeMatched}
+          onName={nameUnknown}
+          onConnect={connectUnknown}
+          onIgnore={dismissUnknown}
+          onAddExisting={(c) =>
+            setCharacters((cs) =>
+              cs.find((x) => x.id === c.id) ? cs : [...cs, { id: c.id, name: c.name }]
+            )
+          }
+        />
+
         <ClipMetaForm
           name={name}
           description={description}
@@ -352,8 +464,203 @@ export default function EditorOverlay({
           onExport={handleExport}
           exporting={exporting}
           hasOpenAIKey={hasOpenAIKey}
+          exportMode={exportMode}
+          onExportMode={setExportMode}
         />
       </div>
+    </div>
+  );
+}
+
+function CharacterStrip({
+  characters,
+  allCharacters,
+  unknownPeople,
+  sampleFrames,
+  onRemove,
+  onName,
+  onConnect,
+  onIgnore,
+  onAddExisting,
+}: {
+  characters: MatchedCharacter[];
+  allCharacters: Character[];
+  unknownPeople: UnknownPerson[];
+  sampleFrames: SampleFrame[];
+  onRemove: (id: string) => void;
+  onName: (idx: number, name: string) => void;
+  onConnect: (idx: number, characterId: string) => void;
+  onIgnore: (idx: number) => void;
+  onAddExisting: (c: Character) => void;
+}) {
+  const matchedIds = new Set(characters.map((c) => c.id));
+  const addable = allCharacters.filter((c) => !matchedIds.has(c.id));
+
+  const hasContent =
+    characters.length > 0 || unknownPeople.length > 0 || addable.length > 0;
+  if (!hasContent) return null;
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-ink-800 px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs uppercase tracking-wide text-ink-500">
+          Characters
+        </span>
+        {characters.map((c) => (
+          <span
+            key={c.id}
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-200"
+            title="AI matched — click × to remove from this clip"
+          >
+            {c.name}
+            <button
+              onClick={() => onRemove(c.id)}
+              className="text-emerald-200/60 hover:text-emerald-100"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {addable.length > 0 && (
+          <select
+            className="rounded bg-ink-800 px-2 py-1 text-xs text-ink-200 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
+            value=""
+            onChange={(e) => {
+              const c = allCharacters.find((x) => x.id === e.target.value);
+              if (c) onAddExisting(c);
+              e.target.value = "";
+            }}
+          >
+            <option value="">+ add character…</option>
+            {addable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {unknownPeople.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-2">
+          <div className="text-xs text-amber-200">
+            Unknown character{unknownPeople.length === 1 ? "" : "s"} spotted by
+            AI — name, connect to existing, or ignore:
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {unknownPeople.map((u, idx) => (
+              <UnknownCard
+                key={idx}
+                person={u}
+                allCharacters={allCharacters}
+                frame={sampleFrames[u.frameIndex]}
+                onName={(n) => onName(idx, n)}
+                onConnect={(id) => onConnect(idx, id)}
+                onIgnore={() => onIgnore(idx)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnknownCard({
+  person,
+  allCharacters,
+  frame,
+  onName,
+  onConnect,
+  onIgnore,
+}: {
+  person: UnknownPerson;
+  allCharacters: Character[];
+  frame: SampleFrame | undefined;
+  onName: (n: string) => void;
+  onConnect: (id: string) => void;
+  onIgnore: () => void;
+}) {
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+
+  return (
+    <div className="flex w-72 flex-col gap-2 rounded border border-ink-800 bg-ink-900 p-2">
+      {frame ? (
+        <img
+          src={frame.url}
+          alt=""
+          className="aspect-video w-full rounded object-cover"
+        />
+      ) : (
+        <div className="aspect-video w-full rounded bg-ink-800" />
+      )}
+      <div className="text-xs text-ink-300">{person.description}</div>
+
+      {naming ? (
+        <div className="flex gap-1">
+          <input
+            autoFocus
+            className="flex-1 rounded bg-ink-800 px-2 py-1 text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Character name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) {
+                e.preventDefault();
+                onName(name);
+                setNaming(false);
+                setName("");
+              } else if (e.key === "Escape") {
+                setNaming(false);
+                setName("");
+              }
+            }}
+          />
+          <button
+            className="rounded bg-accent-500 px-2 py-1 text-[11px] font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+            disabled={!name.trim()}
+            onClick={() => {
+              onName(name);
+              setNaming(false);
+              setName("");
+            }}
+          >
+            Save
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            className="rounded bg-ink-800 px-2 py-1 text-[11px] text-ink-200 hover:bg-ink-700"
+            onClick={() => setNaming(true)}
+          >
+            Name
+          </button>
+          {allCharacters.length > 0 && (
+            <select
+              className="rounded bg-ink-800 px-2 py-1 text-[11px] text-ink-200 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) onConnect(e.target.value);
+              }}
+            >
+              <option value="">Connect to…</option>
+              {allCharacters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            className="rounded px-2 py-1 text-[11px] text-ink-500 hover:text-red-400"
+            onClick={onIgnore}
+          >
+            Ignore
+          </button>
+        </div>
+      )}
     </div>
   );
 }

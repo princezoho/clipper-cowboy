@@ -1,3 +1,10 @@
+export type AutoCutStatus =
+  | "idle"
+  | "detecting"
+  | "captioning"
+  | "complete"
+  | "error";
+
 export interface PoolItem {
   id: string;
   filename: string;
@@ -6,6 +13,10 @@ export interface PoolItem {
   mtime: number;
   duration: number;
   thumbUrl: string;
+  clipCount: number;
+  autoCutStatus: AutoCutStatus;
+  autoCutDone: number;
+  autoCutTotal: number;
 }
 
 export interface SceneSegment {
@@ -20,36 +31,84 @@ export interface ScenesResponse {
   cachedAt: number;
 }
 
+export interface MatchedCharacter {
+  id: string;
+  name: string;
+}
+
+export interface UnknownPerson {
+  description: string;
+  frameIndex: number;
+}
+
+export interface SampleFrame {
+  url: string;
+  index: number;
+  t: number;
+}
+
 export interface ClipCaption {
   name: string;
   description: string;
   tags: string[];
+  characters: MatchedCharacter[];
+  unknownPeople: UnknownPerson[];
+  sampleFrames: SampleFrame[];
+  cacheKey: string;
 }
+
+export interface CharacterRef {
+  name: string;
+  url: string;
+}
+
+export interface Character {
+  id: string;
+  name: string;
+  aliases: string[];
+  description: string;
+  refCount: number;
+  folder: string;
+  created: number;
+  updated: number;
+  refs: CharacterRef[];
+  thumbUrl?: string;
+}
+
+export type ExportMode = "clip" | "source" | "bundle";
 
 export interface LibraryItem {
   id: string;
   name: string;
   description: string;
   tags: string[];
+  characters?: MatchedCharacter[];
   filename: string;
   path: string;
   source?: string;
   sourcePath?: string;
   sourceId?: string;
+  sourceCopyPath?: string;
   in?: number;
   out?: number;
   duration?: number;
   mode?: string;
+  exportMode?: ExportMode;
   details?: string;
   created: number;
   thumbUrl: string;
   videoUrl: string;
+  sourceVideoUrl?: string;
+  sourceAvailable?: boolean;
 }
 
 export interface HealthResponse {
   ok: boolean;
-  poolDir: string;
-  libraryDir: string;
+  projectDir: string;
+  clipsDir: string;
+  charactersDir: string;
+  shotlistMd: string;
+  shotlistCsv: string;
   hasOpenAIKey: boolean;
 }
 
@@ -86,7 +145,9 @@ export async function fetchLibrary(): Promise<{
 
 export async function patchLibraryItem(
   id: string,
-  patch: Partial<Pick<LibraryItem, "name" | "description" | "tags">>
+  patch: Partial<
+    Pick<LibraryItem, "name" | "description" | "tags" | "characters">
+  >
 ): Promise<LibraryItem> {
   return jsonOrThrow(
     await fetch(`/api/library/${id}`, {
@@ -143,6 +204,8 @@ export interface ExportPayload {
   name: string;
   description: string;
   tags: string[];
+  characters: MatchedCharacter[];
+  mode: ExportMode;
 }
 
 export async function exportClip(payload: ExportPayload): Promise<LibraryItem> {
@@ -151,6 +214,124 @@ export async function exportClip(payload: ExportPayload): Promise<LibraryItem> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    })
+  );
+}
+
+export interface AutoCutCandidate {
+  id: string;
+  in: number;
+  out: number;
+  duration: number;
+  caption?: ClipCaption;
+  cacheKey?: string;
+  error?: string;
+}
+
+export interface AutoCutState {
+  sourceId: string;
+  status: AutoCutStatus;
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+  total: number;
+  done: number;
+  candidates: AutoCutCandidate[];
+  skipped: string[];
+}
+
+export async function fetchAutoCut(sourceId: string): Promise<AutoCutState> {
+  return jsonOrThrow(await fetch(`/api/auto-cut/${sourceId}`));
+}
+
+export async function startAutoCut(sourceId: string): Promise<AutoCutState> {
+  return jsonOrThrow(
+    await fetch(`/api/auto-cut/${sourceId}`, { method: "POST" })
+  );
+}
+
+export async function clearAutoCut(sourceId: string): Promise<void> {
+  await jsonOrThrow(
+    await fetch(`/api/auto-cut/${sourceId}`, { method: "DELETE" })
+  );
+}
+
+export async function setAutoCutSkipped(
+  sourceId: string,
+  candidateId: string,
+  skipped = true
+): Promise<AutoCutState> {
+  return jsonOrThrow(
+    await fetch(`/api/auto-cut/${sourceId}/skip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidateId, skipped }),
+    })
+  );
+}
+
+export async function fetchCharacters(): Promise<{ items: Character[] }> {
+  return jsonOrThrow(await fetch("/api/characters"));
+}
+
+export async function createCharacter(input: {
+  name: string;
+  description?: string;
+  aliases?: string[];
+}): Promise<Character> {
+  return jsonOrThrow(
+    await fetch("/api/characters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function patchCharacter(
+  id: string,
+  patch: Partial<Pick<Character, "name" | "description" | "aliases">>
+): Promise<Character> {
+  return jsonOrThrow(
+    await fetch(`/api/characters/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function deleteCharacter(id: string): Promise<void> {
+  await jsonOrThrow(
+    await fetch(`/api/characters/${id}`, { method: "DELETE" })
+  );
+}
+
+export async function deleteCharacterRef(
+  id: string,
+  refName: string
+): Promise<void> {
+  await jsonOrThrow(
+    await fetch(
+      `/api/characters/${id}/refs/${encodeURIComponent(refName)}`,
+      { method: "DELETE" }
+    )
+  );
+}
+
+export type AddCharacterRefInput =
+  | { sourceId: string; t: number }
+  | { cacheKey: string; frameIndex: number };
+
+export async function addCharacterRef(
+  id: string,
+  input: AddCharacterRefInput
+): Promise<Character & { addedRef: CharacterRef }> {
+  return jsonOrThrow(
+    await fetch(`/api/characters/${id}/refs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     })
   );
 }

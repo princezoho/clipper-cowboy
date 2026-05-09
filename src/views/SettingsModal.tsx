@@ -7,8 +7,7 @@ interface Props {
 }
 
 export default function SettingsModal({ current, onClose }: Props) {
-  const [poolDir, setPoolDir] = useState(current.poolDir);
-  const [libraryDir, setLibraryDir] = useState(current.libraryDir);
+  const [projectDir, setProjectDir] = useState(current.projectDir);
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -19,10 +18,7 @@ export default function SettingsModal({ current, onClose }: Props) {
     setError(null);
     setNote(null);
     try {
-      const body: Record<string, string> = {
-        poolDir,
-        libraryDir,
-      };
+      const body: Record<string, string> = { projectDir };
       if (apiKey.trim()) body.openaiApiKey = apiKey.trim();
       const res = await fetch("/api/settings", {
         method: "POST",
@@ -59,28 +55,46 @@ export default function SettingsModal({ current, onClose }: Props) {
         </div>
 
         <div className="space-y-4 px-4 py-4 text-sm">
-          <Field label="Pool folder" hint="Where your source montage videos live.">
+          <Field
+            label="Project folder"
+            hint="One folder = one project. Source montages live at the root; clips go in clips/, characters in characters/, shotlist.md/csv at the root."
+          >
             <input
               className="w-full rounded bg-ink-800 px-2 py-1.5 font-mono text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
-              value={poolDir}
-              onChange={(e) => setPoolDir(e.target.value)}
-              placeholder="/Users/you/path/to/source-pool"
+              value={projectDir}
+              onChange={(e) => setProjectDir(e.target.value)}
+              placeholder="/Users/you/Desktop/your-project"
             />
           </Field>
-          <Field label="Library folder" hint="Where exported clips and their metadata go.">
-            <input
-              className="w-full rounded bg-ink-800 px-2 py-1.5 font-mono text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
-              value={libraryDir}
-              onChange={(e) => setLibraryDir(e.target.value)}
-              placeholder="/Users/you/path/to/library"
-            />
-          </Field>
+
+          <div className="rounded-md border border-ink-800 bg-ink-950/40 px-3 py-2 font-mono text-[11px] text-ink-400">
+            <div>
+              <span className="text-ink-500">clips/      </span>
+              {current.clipsDir.replace(current.projectDir, "<project>")}
+            </div>
+            <div>
+              <span className="text-ink-500">characters/ </span>
+              {current.charactersDir.replace(
+                current.projectDir,
+                "<project>"
+              )}
+            </div>
+            <div>
+              <span className="text-ink-500">shotlist.md </span>
+              {current.shotlistMd.replace(current.projectDir, "<project>")}
+            </div>
+            <div>
+              <span className="text-ink-500">shotlist.csv</span>{" "}
+              {current.shotlistCsv.replace(current.projectDir, "<project>")}
+            </div>
+          </div>
+
           <Field
             label="OpenAI API key"
             hint={
               current.hasOpenAIKey
                 ? "A key is already set. Type a new value to replace it, or leave blank to keep the existing one."
-                : "Required for AI auto-fill. Stored locally in your .env file."
+                : "Required for AI auto-fill and character recognition. Stored in your .env file."
             }
           >
             <input

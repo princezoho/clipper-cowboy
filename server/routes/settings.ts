@@ -10,8 +10,7 @@ const router = Router();
 const ENV_PATH = path.resolve(process.cwd(), ".env");
 
 const Body = z.object({
-  poolDir: z.string().optional(),
-  libraryDir: z.string().optional(),
+  projectDir: z.string().optional(),
   openaiApiKey: z.string().optional(),
 });
 
@@ -39,7 +38,7 @@ function readEnvFile(): Record<string, string> {
 }
 
 function writeEnvFile(values: Record<string, string>) {
-  const known = ["OPENAI_API_KEY", "POOL_DIR", "LIBRARY_DIR", "PORT"];
+  const known = ["OPENAI_API_KEY", "PROJECT_DIR", "PORT"];
   const lines: string[] = [];
   for (const k of known) {
     if (k in values) lines.push(`${k}=${values[k] ?? ""}`);
@@ -57,29 +56,21 @@ router.post("/settings", (req, res) => {
     return;
   }
   const env = readEnvFile();
-  if (parsed.data.poolDir !== undefined) {
-    const p = expandHome(parsed.data.poolDir.trim());
+  if (parsed.data.projectDir !== undefined) {
+    const p = expandHome(parsed.data.projectDir.trim());
     if (p) {
       try {
         fs.mkdirSync(p, { recursive: true });
       } catch (err) {
-        res.status(400).json({ error: `Could not create POOL_DIR: ${err}` });
+        res.status(400).json({ error: `Could not create PROJECT_DIR: ${err}` });
         return;
       }
     }
-    env.POOL_DIR = p;
-  }
-  if (parsed.data.libraryDir !== undefined) {
-    const p = expandHome(parsed.data.libraryDir.trim());
-    if (p) {
-      try {
-        fs.mkdirSync(p, { recursive: true });
-      } catch (err) {
-        res.status(400).json({ error: `Could not create LIBRARY_DIR: ${err}` });
-        return;
-      }
-    }
-    env.LIBRARY_DIR = p;
+    env.PROJECT_DIR = p;
+    // Drop legacy keys so they don't override on next boot.
+    delete env.POOL_DIR;
+    delete env.LIBRARY_DIR;
+    delete env.CHARACTERS_DIR;
   }
   if (parsed.data.openaiApiKey !== undefined) {
     env.OPENAI_API_KEY = parsed.data.openaiApiKey.trim();
@@ -90,8 +81,7 @@ router.post("/settings", (req, res) => {
     ok: true,
     note: "Saved. Restart the dev server (Ctrl+C, npm run dev) to apply.",
     current: {
-      poolDir: config.poolDir,
-      libraryDir: config.libraryDir,
+      projectDir: config.projectDir,
       hasOpenAIKey: Boolean(config.openaiApiKey),
     },
   });

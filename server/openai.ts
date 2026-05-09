@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import fs from "node:fs";
-import { config } from "./config.js";
+import { config, SUPPRESSED_TAGS } from "./config.js";
 
 let client: OpenAI | null = null;
 
@@ -14,20 +14,60 @@ export function getOpenAI(): OpenAI {
   return client;
 }
 
+export interface CharacterContext {
+  id: string;
+  name: string;
+  refPaths: string[];
+}
+
+export interface MatchedCharacter {
+  id: string;
+  name: string;
+}
+
+export interface UnknownPerson {
+  description: string;
+  frameIndex: number;
+}
+
 export interface ClipCaption {
   name: string;
   description: string;
   tags: string[];
+  characters: MatchedCharacter[];
+  unknownPeople: UnknownPerson[];
 }
 
-const CAPTION_PROMPT = `You are tagging clips for a stock-footage style library.
-Given these frames sampled from a single short clip, return JSON with:
+const BASE_PROMPT = `You are tagging clips for a stock-footage style library.
+Given the candidate frames sampled from a single short clip, return JSON with:
 - name: 3-7 word headline (Title Case, no trailing period)
 - description: one concise sentence (<= 18 words)
 - tags: 3-7 lowercase keyword tags (single words or short noun phrases)
 
 Focus on subject, setting, action, mood, camera move. Avoid filler words.
-Respond ONLY with valid JSON: {"name": "...", "description": "...", "tags": ["..."]}.`;
+Do NOT include style-of-art tags like "animation", "cartoon", "illustration",
+"comic", "drawing", "2d" — the entire library shares one art style, so those
+are noise. Tag what is happening, not how it is rendered.`;
+
+const CHARACTER_INSTRUCTIONS = `You will also be shown LABELED CHARACTER REFERENCES.
+For each candidate frame, decide which of the labeled characters appear.
+Also report any other distinct human-like figures that do NOT match any
+labeled character — call those "unknown people".
+
+In your JSON include:
+- characters: array of labeled character ids that appear in any candidate frame
+- unknownPeople: array of { "frameIndex": 0|1|2, "description": "<=10 word visual description" }
+
+Only list characters whose face/body actually appears. Do not invent.`;
+
+const RESPONSE_SCHEMA_TEXT = `Respond ONLY with a single JSON object:
+{
+  "name": "...",
+  "description": "...",
+  "tags": ["..."],
+  "characters": ["<character id>", ...],
+  "unknownPeople": [{ "frameIndex": 0, "description": "..." }, ...]
+}`;
 
 function fileToDataUrl(p: string): string {
   const buf = fs.readFileSync(p);
@@ -35,14 +75,50 @@ function fileToDataUrl(p: string): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+const REFS_PER_CHARACTER = 2;
+const MAX_CHARACTERS_IN_PROMPT = 10;
+
 export async function captionFromFrames(
-  framePaths: string[]
+  framePaths: string[],
+  characters: CharacterContext[] = []
 ): Promise<ClipCaption> {
   const ai = getOpenAI();
-  const images = framePaths.map((p) => ({
+
+  const candidateImages = framePaths.map((p) => ({
     type: "image_url" as const,
     image_url: { url: fileToDataUrl(p), detail: "low" as const },
   }));
+
+  const usedCharacters = characters.slice(0, MAX_CHARACTERS_IN_PROMPT);
+  const characterParts: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string; detail: "low" } }
+  > = [];
+  if (usedCharacters.length > 0) {
+    characterParts.push({
+      type: "text",
+      text: "LABELED CHARACTER REFERENCES (followed by their reference images):",
+    });
+    for (const c of usedCharacters) {
+      characterParts.push({
+        type: "text",
+        text: `Character id="${c.id}" name="${c.name}"`,
+      });
+      const refs = c.refPaths.slice(0, REFS_PER_CHARACTER);
+      for (const r of refs) {
+        characterParts.push({
+          type: "image_url",
+          image_url: { url: fileToDataUrl(r), detail: "low" as const },
+        });
+      }
+    }
+  }
+
+  const promptText =
+    BASE_PROMPT +
+    (usedCharacters.length > 0 ? "\n\n" + CHARACTER_INSTRUCTIONS : "") +
+    "\n\n" +
+    RESPONSE_SCHEMA_TEXT;
 
   const response = await ai.chat.completions.create({
     model: "gpt-4o",
@@ -52,25 +128,63 @@ export async function captionFromFrames(
       {
         role: "user",
         content: [
-          { type: "text", text: CAPTION_PROMPT },
-          ...images,
+          { type: "text", text: promptText },
+          { type: "text", text: "CANDIDATE FRAMES:" },
+          ...candidateImages,
+          ...characterParts,
         ],
       },
     ],
   });
 
   const raw = response.choices[0]?.message?.content ?? "{}";
-  let parsed: Partial<ClipCaption> = {};
+  let parsed: any = {};
   try {
     parsed = JSON.parse(raw);
   } catch {
     parsed = {};
   }
+
+  const tags: string[] = Array.isArray(parsed.tags)
+    ? parsed.tags
+        .map((t: unknown) => String(t).toLowerCase().trim())
+        .filter((t: string) => t && !SUPPRESSED_TAGS.has(t))
+        .slice(0, 10)
+    : [];
+
+  const charIds: string[] = Array.isArray(parsed.characters)
+    ? parsed.characters.map((x: unknown) => String(x))
+    : [];
+  const charById = new Map(usedCharacters.map((c) => [c.id, c]));
+  const matched: MatchedCharacter[] = [];
+  const seen = new Set<string>();
+  for (const id of charIds) {
+    if (seen.has(id)) continue;
+    const c = charById.get(id);
+    if (c) {
+      matched.push({ id: c.id, name: c.name });
+      seen.add(id);
+    }
+  }
+
+  const unknownPeople: UnknownPerson[] = Array.isArray(parsed.unknownPeople)
+    ? parsed.unknownPeople
+        .map((u: any) => ({
+          description: String(u?.description ?? "").trim().slice(0, 200),
+          frameIndex: Math.max(
+            0,
+            Math.min(framePaths.length - 1, Number(u?.frameIndex ?? 0))
+          ),
+        }))
+        .filter((u: UnknownPerson) => u.description)
+        .slice(0, 5)
+    : [];
+
   return {
     name: (parsed.name ?? "Untitled Clip").toString().slice(0, 120),
     description: (parsed.description ?? "").toString().slice(0, 400),
-    tags: Array.isArray(parsed.tags)
-      ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 10)
-      : [],
+    tags,
+    characters: matched,
+    unknownPeople,
   };
 }

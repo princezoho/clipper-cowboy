@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LibraryItem,
   deleteLibraryItem,
   formatDuration,
+  formatTime,
   patchLibraryItem,
 } from "../lib/api";
 
@@ -179,6 +180,19 @@ function ClipCard({
             {item.description && (
               <div className="text-xs text-ink-300">{item.description}</div>
             )}
+            {item.characters && item.characters.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {item.characters.map((c) => (
+                  <span
+                    key={c.id}
+                    className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-200"
+                    title="Character"
+                  >
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            )}
             {item.tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {item.tags.map((t) => (
@@ -217,6 +231,8 @@ function ClipCard({
   );
 }
 
+type PreviewTab = "clip" | "source" | "side-by-side";
+
 function PreviewModal({
   item,
   onClose,
@@ -224,36 +240,241 @@ function PreviewModal({
   item: LibraryItem;
   onClose: () => void;
 }) {
+  const sourceAvailable = Boolean(item.sourceVideoUrl);
+  const hasTrimMeta =
+    typeof item.in === "number" && typeof item.out === "number" && item.out > item.in;
+
+  const [tab, setTab] = useState<PreviewTab>("clip");
+  const [loopSelection, setLoopSelection] = useState(true);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-6"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-ink-800 bg-ink-900"
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-ink-800 bg-ink-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-ink-800 px-4 py-2">
-          <div className="font-medium">{item.name}</div>
-          <button
-            className="text-ink-400 hover:text-ink-100"
-            onClick={onClose}
-          >
-            Close
-          </button>
+        <div className="flex items-center justify-between gap-3 border-b border-ink-800 px-4 py-2">
+          <div className="min-w-0">
+            <div className="truncate font-medium">{item.name}</div>
+            {hasTrimMeta && (
+              <div className="font-mono text-[11px] text-ink-500">
+                in {formatTime(item.in!)} → out {formatTime(item.out!)} ·{" "}
+                {formatDuration((item.out ?? 0) - (item.in ?? 0))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="flex overflow-hidden rounded-md border border-ink-700 text-xs">
+              <TabButton active={tab === "clip"} onClick={() => setTab("clip")}>
+                Clip
+              </TabButton>
+              <TabButton
+                active={tab === "source"}
+                disabled={!sourceAvailable}
+                onClick={() => sourceAvailable && setTab("source")}
+                title={sourceAvailable ? "" : "Source file isn't available"}
+              >
+                Source
+              </TabButton>
+              <TabButton
+                active={tab === "side-by-side"}
+                disabled={!sourceAvailable}
+                onClick={() =>
+                  sourceAvailable && setTab("side-by-side")
+                }
+                title={sourceAvailable ? "" : "Source file isn't available"}
+              >
+                Side-by-side
+              </TabButton>
+            </div>
+
+            {tab !== "clip" && hasTrimMeta && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-400">
+                <input
+                  type="checkbox"
+                  className="accent-accent-500"
+                  checked={loopSelection}
+                  onChange={(e) => setLoopSelection(e.target.checked)}
+                />
+                Loop selection
+              </label>
+            )}
+
+            <button
+              className="rounded-md border border-ink-700 px-2 py-1 text-sm text-ink-300 hover:bg-ink-800"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          </div>
         </div>
-        <video
-          src={item.videoUrl}
-          controls
-          autoPlay
-          className="max-h-[70vh] w-full bg-black"
-        />
+
+        <div className="flex-1 overflow-hidden bg-black">
+          {tab === "clip" && (
+            <ClipPlayer src={item.videoUrl} className="h-[70vh] w-full" />
+          )}
+          {tab === "source" && sourceAvailable && (
+            <SourcePlayer
+              src={item.sourceVideoUrl!}
+              inT={item.in}
+              outT={item.out}
+              loopSelection={loopSelection && hasTrimMeta}
+              className="h-[70vh] w-full"
+            />
+          )}
+          {tab === "side-by-side" && sourceAvailable && (
+            <div className="grid h-[70vh] grid-cols-2 divide-x divide-ink-800">
+              <div className="flex flex-col">
+                <div className="border-b border-ink-800 bg-ink-900/60 px-3 py-1 text-xs uppercase tracking-wide text-ink-400">
+                  Clip
+                </div>
+                <ClipPlayer src={item.videoUrl} className="flex-1 bg-black" />
+              </div>
+              <div className="flex flex-col">
+                <div className="border-b border-ink-800 bg-ink-900/60 px-3 py-1 text-xs uppercase tracking-wide text-ink-400">
+                  Source {hasTrimMeta && `(loop ${formatTime(item.in!)}–${formatTime(item.out!)})`}
+                </div>
+                <SourcePlayer
+                  src={item.sourceVideoUrl!}
+                  inT={item.in}
+                  outT={item.out}
+                  loopSelection={loopSelection && hasTrimMeta}
+                  className="flex-1 bg-black"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         {item.description && (
-          <div className="px-4 py-3 text-sm text-ink-300">
+          <div className="border-t border-ink-800 px-4 py-3 text-sm text-ink-300">
             {item.description}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  children,
+  active,
+  disabled,
+  onClick,
+  title,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={
+        "px-2.5 py-1 transition " +
+        (active
+          ? "bg-accent-500 text-black"
+          : disabled
+          ? "bg-ink-900 text-ink-600"
+          : "bg-ink-900 text-ink-300 hover:bg-ink-800")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function ClipPlayer({ src, className }: { src: string; className?: string }) {
+  return (
+    <video
+      key={src}
+      src={src}
+      controls
+      autoPlay
+      loop
+      playsInline
+      className={className}
+    />
+  );
+}
+
+function SourcePlayer({
+  src,
+  inT,
+  outT,
+  loopSelection,
+  className,
+}: {
+  src: string;
+  inT?: number;
+  outT?: number;
+  loopSelection: boolean;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+
+  // Seek to the in-point when the source first loads / when the URL changes.
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    function onLoaded() {
+      if (typeof inT === "number" && Number.isFinite(inT)) {
+        try {
+          v!.currentTime = inT;
+        } catch {
+          // ignore
+        }
+      }
+      v!.play().catch(() => {});
+    }
+    v.addEventListener("loadedmetadata", onLoaded);
+    return () => v.removeEventListener("loadedmetadata", onLoaded);
+  }, [src, inT]);
+
+  // While "Loop selection" is on, wrap from out → in.
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || !loopSelection) return;
+    if (typeof inT !== "number" || typeof outT !== "number") return;
+    function onTime() {
+      if (!v) return;
+      if (v.currentTime >= outT! - 0.02) {
+        try {
+          v.currentTime = inT!;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    v.addEventListener("timeupdate", onTime);
+    return () => v.removeEventListener("timeupdate", onTime);
+  }, [loopSelection, inT, outT, src]);
+
+  return (
+    <video
+      ref={ref}
+      key={src}
+      src={src}
+      controls
+      autoPlay
+      playsInline
+      className={className}
+    />
   );
 }

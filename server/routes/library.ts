@@ -2,13 +2,9 @@ import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import {
-  config,
-  isSupportedVideo,
-  LIBRARY_CACHE_DIR,
-  LIBRARY_META_DIR,
-} from "../config.js";
+import { config, isSupportedVideo } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
+import { scheduleShotlistRebuild } from "../util/shotlist.js";
 
 const router = Router();
 
@@ -17,34 +13,40 @@ interface LibraryMeta {
   name: string;
   description: string;
   tags: string[];
+  characters?: { id: string; name: string }[];
   filename: string;
   path: string;
   source?: string;
   sourcePath?: string;
   sourceId?: string;
+  sourceCopyPath?: string;
   in?: number;
   out?: number;
   duration?: number;
   mode?: string;
+  exportMode?: "clip" | "source" | "bundle";
   details?: string;
   created: number;
 }
 
-function readMeta(metaPath: string): LibraryMeta | null {
+function metaPath(id: string): string {
+  return path.join(config.clipMetaDir, `${id}.json`);
+}
+
+function readMeta(p: string): LibraryMeta | null {
   try {
-    const data = JSON.parse(fs.readFileSync(metaPath, "utf8")) as LibraryMeta;
-    return data;
+    return JSON.parse(fs.readFileSync(p, "utf8")) as LibraryMeta;
   } catch {
     return null;
   }
 }
 
 function listMetas(): LibraryMeta[] {
-  if (!fs.existsSync(LIBRARY_META_DIR)) return [];
+  if (!fs.existsSync(config.clipMetaDir)) return [];
   const items: LibraryMeta[] = [];
-  for (const name of fs.readdirSync(LIBRARY_META_DIR)) {
+  for (const name of fs.readdirSync(config.clipMetaDir)) {
     if (!name.endsWith(".json")) continue;
-    const m = readMeta(path.join(LIBRARY_META_DIR, name));
+    const m = readMeta(path.join(config.clipMetaDir, name));
     if (m && fs.existsSync(m.path)) items.push(m);
   }
   items.sort((a, b) => b.created - a.created);
@@ -52,28 +54,45 @@ function listMetas(): LibraryMeta[] {
 }
 
 const idToFile = new Map<string, string>();
+const idToSource = new Map<string, string>();
+
+function pickSourcePath(m: LibraryMeta): string | null {
+  if (m.sourceCopyPath && fs.existsSync(m.sourceCopyPath)) return m.sourceCopyPath;
+  if (m.sourcePath && fs.existsSync(m.sourcePath)) return m.sourcePath;
+  return null;
+}
 
 function refreshIndex() {
   idToFile.clear();
+  idToSource.clear();
   for (const m of listMetas()) {
     idToFile.set(m.id, m.path);
+    const src = pickSourcePath(m);
+    if (src) idToSource.set(m.id, src);
   }
 }
 
 router.get("/library", async (_req, res) => {
   const metas = listMetas();
   refreshIndex();
-  const items = metas.map((m) => ({
-    ...m,
-    thumbUrl: `/api/library/${m.id}/thumb`,
-    videoUrl: `/api/library/${m.id}/video`,
-  }));
-  res.json({ items, libraryDir: config.libraryDir });
+  const items = metas.map((m) => {
+    const sourceAvailable = pickSourcePath(m) !== null;
+    return {
+      ...m,
+      thumbUrl: `/api/library/${m.id}/thumb`,
+      videoUrl: `/api/library/${m.id}/video`,
+      sourceVideoUrl: sourceAvailable
+        ? `/api/library/${m.id}/source-video`
+        : undefined,
+      sourceAvailable,
+    };
+  });
+  res.json({ items, libraryDir: config.clipsDir });
 });
 
 router.patch("/library/:id", (req, res) => {
-  const metaPath = path.join(LIBRARY_META_DIR, `${req.params.id}.json`);
-  if (!fs.existsSync(metaPath)) {
+  const mp = metaPath(req.params.id);
+  if (!fs.existsSync(mp)) {
     res.status(404).json({ error: "not found" });
     return;
   }
@@ -81,39 +100,47 @@ router.patch("/library/:id", (req, res) => {
     name: z.string().optional(),
     description: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    characters: z
+      .array(z.object({ id: z.string(), name: z.string() }))
+      .optional(),
   });
   const parsed = Schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const meta = readMeta(metaPath);
+  const meta = readMeta(mp);
   if (!meta) {
     res.status(500).json({ error: "could not read meta" });
     return;
   }
   const updated: LibraryMeta = { ...meta, ...parsed.data };
-  fs.writeFileSync(metaPath, JSON.stringify(updated, null, 2));
+  fs.writeFileSync(mp, JSON.stringify(updated, null, 2));
+  scheduleShotlistRebuild();
   res.json(updated);
 });
 
 router.delete("/library/:id", (req, res) => {
-  const metaPath = path.join(LIBRARY_META_DIR, `${req.params.id}.json`);
-  if (!fs.existsSync(metaPath)) {
+  const mp = metaPath(req.params.id);
+  if (!fs.existsSync(mp)) {
     res.status(404).json({ error: "not found" });
     return;
   }
-  const meta = readMeta(metaPath);
+  const meta = readMeta(mp);
   if (!meta) {
     res.status(500).json({ error: "could not read meta" });
     return;
   }
-  try {
-    if (fs.existsSync(meta.path)) fs.unlinkSync(meta.path);
-  } catch {
-    // ignore
+  for (const p of [meta.path, meta.sourceCopyPath]) {
+    if (!p) continue;
+    try {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch {
+      // ignore
+    }
   }
-  fs.unlinkSync(metaPath);
+  fs.unlinkSync(mp);
+  scheduleShotlistRebuild();
   res.json({ ok: true });
 });
 
@@ -128,7 +155,7 @@ router.get("/library/:id/thumb", async (req, res) => {
     res.status(400).json({ error: "not a video" });
     return;
   }
-  const cachePath = path.join(LIBRARY_CACHE_DIR, `${req.params.id}.jpg`);
+  const cachePath = path.join(config.thumbCacheDir, `lib-${req.params.id}.jpg`);
   if (!fs.existsSync(cachePath)) {
     try {
       const dur = await getDuration(file);
@@ -152,13 +179,11 @@ const VIDEO_MIME: Record<string, string> = {
   ".avi": "video/x-msvideo",
 };
 
-router.get("/library/:id/video", (req, res) => {
-  refreshIndex();
-  const file = idToFile.get(req.params.id);
-  if (!file || !fs.existsSync(file)) {
-    res.status(404).end("not found");
-    return;
-  }
+function streamVideo(
+  file: string,
+  req: import("express").Request,
+  res: import("express").Response
+) {
   const stat = fs.statSync(file);
   const ext = path.extname(file).toLowerCase();
   const mime = VIDEO_MIME[ext] ?? "application/octet-stream";
@@ -184,6 +209,26 @@ router.get("/library/:id/video", (req, res) => {
     res.setHeader("Accept-Ranges", "bytes");
     fs.createReadStream(file).pipe(res);
   }
+}
+
+router.get("/library/:id/video", (req, res) => {
+  refreshIndex();
+  const file = idToFile.get(req.params.id);
+  if (!file || !fs.existsSync(file)) {
+    res.status(404).end("not found");
+    return;
+  }
+  streamVideo(file, req, res);
+});
+
+router.get("/library/:id/source-video", (req, res) => {
+  refreshIndex();
+  const file = idToSource.get(req.params.id);
+  if (!file || !fs.existsSync(file)) {
+    res.status(404).end("source not found");
+    return;
+  }
+  streamVideo(file, req, res);
 });
 
 export default router;

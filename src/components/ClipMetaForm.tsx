@@ -1,3 +1,5 @@
+import { ExportMode } from "../lib/api";
+
 interface Props {
   name: string;
   description: string;
@@ -10,7 +12,28 @@ interface Props {
   onExport: () => void;
   exporting: boolean;
   hasOpenAIKey: boolean;
+  exportMode: ExportMode;
+  onExportMode: (m: ExportMode) => void;
 }
+
+const MODE_LABEL: Record<ExportMode, string> = {
+  clip: "Clip",
+  source: "Source",
+  bundle: "Clip + Source",
+};
+
+const MODE_TITLE: Record<ExportMode, string> = {
+  clip: "Smart-cut just the trimmed selection into the library.",
+  source: "Clone the entire source montage into the library (no trim).",
+  bundle:
+    "Both: smart-cut clip AND a full clone of the source, side-by-side in the library.",
+};
+
+const MODE_CTA: Record<ExportMode, string> = {
+  clip: "Export clip",
+  source: "Export source",
+  bundle: "Export bundle",
+};
 
 export default function ClipMetaForm({
   name,
@@ -24,6 +47,8 @@ export default function ClipMetaForm({
   onExport,
   exporting,
   hasOpenAIKey,
+  exportMode,
+  onExportMode,
 }: Props) {
   return (
     <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_auto]">
@@ -78,13 +103,32 @@ export default function ClipMetaForm({
         >
           {captioning ? "Thinking…" : "Auto-fill with AI"}
         </button>
+
+        <div className="flex overflow-hidden rounded-md border border-ink-700 text-xs">
+          {(Object.keys(MODE_LABEL) as ExportMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => onExportMode(m)}
+              title={MODE_TITLE[m]}
+              className={
+                "px-2.5 py-1 transition " +
+                (exportMode === m
+                  ? "bg-accent-500 text-black"
+                  : "bg-ink-900 text-ink-300 hover:bg-ink-800")
+              }
+            >
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+
         <button
           onClick={onExport}
           disabled={exporting || !name.trim()}
           className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-black shadow hover:bg-accent-400 disabled:opacity-40"
-          title="Export the selected range to your library (Enter)"
+          title={MODE_TITLE[exportMode] + " (Enter)"}
         >
-          {exporting ? "Exporting…" : "Export clip ⏎"}
+          {exporting ? "Exporting…" : `${MODE_CTA[exportMode]} ⏎`}
         </button>
       </div>
     </div>
