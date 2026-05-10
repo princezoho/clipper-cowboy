@@ -16,6 +16,12 @@ const PARALLEL_CAPTIONS = 4;
 const MIN_SCENE_LEN = 0.6;
 const FRAMES_PER_CAPTION = 3;
 
+// Single-take sources (no hard scene cuts) would otherwise produce just one
+// long candidate. Anything longer than MAX_SEGMENT_LEN gets split into chunks
+// of ~TARGET_SUBDIVISION_LEN so the queue still has multiple useful clips.
+const MAX_SEGMENT_LEN = 8.0;
+const TARGET_SUBDIVISION_LEN = 5.0;
+
 export interface Candidate {
   id: string;
   in: number;
@@ -118,6 +124,28 @@ function makeCandidateId(inT: number, outT: number): string {
   return `${Math.round(inT * 1000)}-${Math.round(outT * 1000)}`;
 }
 
+function subdivideLong(
+  segs: { in: number; out: number }[]
+): { in: number; out: number }[] {
+  const out: { in: number; out: number }[] = [];
+  for (const s of segs) {
+    const len = s.out - s.in;
+    if (len <= MAX_SEGMENT_LEN) {
+      out.push(s);
+      continue;
+    }
+    const n = Math.max(2, Math.round(len / TARGET_SUBDIVISION_LEN));
+    const chunkLen = len / n;
+    for (let i = 0; i < n; i += 1) {
+      out.push({
+        in: s.in + i * chunkLen,
+        out: s.in + (i + 1) * chunkLen,
+      });
+    }
+  }
+  return out;
+}
+
 async function detectSegments(
   file: string
 ): Promise<{ in: number; out: number }[]> {
@@ -127,16 +155,16 @@ async function detectSegments(
     .filter((t, i, a) => i === 0 || t > a[i - 1] + 0.05)
     .sort((a, b) => a - b);
 
-  const segments: { in: number; out: number }[] = [];
+  const raw: { in: number; out: number }[] = [];
   for (let i = 0; i < boundaries.length - 1; i += 1) {
     const inT = boundaries[i];
     const outT = boundaries[i + 1];
-    if (outT - inT >= MIN_SCENE_LEN) segments.push({ in: inT, out: outT });
+    if (outT - inT >= MIN_SCENE_LEN) raw.push({ in: inT, out: outT });
   }
-  if (segments.length === 0 && duration > 0) {
-    segments.push({ in: 0, out: duration });
+  if (raw.length === 0 && duration > 0) {
+    raw.push({ in: 0, out: duration });
   }
-  return segments;
+  return subdivideLong(raw);
 }
 
 async function captionSegment(

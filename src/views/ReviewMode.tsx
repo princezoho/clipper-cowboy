@@ -19,6 +19,7 @@ import {
   setAutoCutSkipped,
   startAutoCut,
 } from "../lib/api";
+import TagCharacterFromFrame from "../components/TagCharacterFromFrame";
 
 interface Props {
   source: PoolItem;
@@ -332,10 +333,14 @@ export default function ReviewMode({
   }
 
   function addExistingCharacter(c: Character) {
+    addMatchedCharacter({ id: c.id, name: c.name });
+  }
+
+  function addMatchedCharacter(m: MatchedCharacter) {
     if (!activeEdits) return;
-    if (activeEdits.characters.find((x) => x.id === c.id)) return;
+    if (activeEdits.characters.find((x) => x.id === m.id)) return;
     patchEdit({
-      characters: [...activeEdits.characters, { id: c.id, name: c.name }],
+      characters: [...activeEdits.characters, m],
     });
   }
 
@@ -563,6 +568,12 @@ export default function ReviewMode({
               onRecaption={handleRecaption}
               onRemoveCharacter={removeMatched}
               onAddExistingCharacter={addExistingCharacter}
+              onAddMatchedCharacter={addMatchedCharacter}
+              onCharactersChanged={() => {
+                reloadCharacters();
+                onCharactersChanged?.();
+              }}
+              onError={setError}
               onNameUnknown={nameUnknown}
               onConnectUnknown={connectUnknown}
             />
@@ -632,6 +643,9 @@ function ActiveCandidate({
   onRecaption,
   onRemoveCharacter,
   onAddExistingCharacter,
+  onAddMatchedCharacter,
+  onCharactersChanged,
+  onError,
   onNameUnknown,
   onConnectUnknown,
 }: {
@@ -651,6 +665,9 @@ function ActiveCandidate({
   onRecaption: () => void;
   onRemoveCharacter: (id: string) => void;
   onAddExistingCharacter: (c: Character) => void;
+  onAddMatchedCharacter: (m: MatchedCharacter) => void;
+  onCharactersChanged: () => void;
+  onError: (msg: string) => void;
   onNameUnknown: (p: UnknownPerson, name: string) => void;
   onConnectUnknown: (p: UnknownPerson, characterId: string) => void;
 }) {
@@ -794,7 +811,7 @@ function ActiveCandidate({
                 e.target.value = "";
               }}
             >
-              <option value="">+ add character…</option>
+              <option value="">+ add existing…</option>
               {addable.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -802,6 +819,17 @@ function ActiveCandidate({
               ))}
             </select>
           )}
+          <TagCharacterFromFrame
+            sourceId={source.id}
+            getCurrentTime={() =>
+              videoRef.current?.currentTime ?? candidate.in
+            }
+            existingCharacters={allCharacters}
+            alreadyMatched={edits.characters}
+            onTagged={onAddMatchedCharacter}
+            onCharactersChanged={onCharactersChanged}
+            onError={onError}
+          />
         </div>
 
         {/* Unknown people */}

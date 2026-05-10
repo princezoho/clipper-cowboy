@@ -49,14 +49,25 @@ Do NOT include style-of-art tags like "animation", "cartoon", "illustration",
 "comic", "drawing", "2d" — the entire library shares one art style, so those
 are noise. Tag what is happening, not how it is rendered.`;
 
-const CHARACTER_INSTRUCTIONS = `You will also be shown LABELED CHARACTER REFERENCES.
-For each candidate frame, decide which of the labeled characters appear.
-Also report any other distinct human-like figures that do NOT match any
-labeled character — call those "unknown people".
+// Always asked for — even with zero defined characters. This is how the user
+// bootstraps the character library: the AI flags every distinct figure it
+// sees, then the UI offers Name / Connect / Ignore on each one.
+const UNKNOWN_PEOPLE_INSTRUCTIONS = `Also report every distinct human-like
+character visible in the candidate frames as "unknown people" — list each
+one even if no labeled references are provided. This is how the catalog
+bootstraps its character library from raw footage.
 
-In your JSON include:
-- characters: array of labeled character ids that appear in any candidate frame
-- unknownPeople: array of { "frameIndex": 0|1|2, "description": "<=10 word visual description" }
+For each unknown person, return:
+- frameIndex: 0|1|2 (which sample frame they appear most clearly in)
+- description: <=10 word visual description (e.g. "cowboy in tan vest", "white horse")
+
+Don't list the same character twice. Don't invent figures that aren't visible.`;
+
+const CHARACTER_MATCHING_INSTRUCTIONS = `You will also be shown LABELED
+CHARACTER REFERENCES. For each candidate frame, decide which of the labeled
+characters appear and include their ids in the "characters" field. Any
+distinct figures that do NOT match a labeled reference go in "unknownPeople"
+(see above).
 
 Only list characters whose face/body actually appears. Do not invent.`;
 
@@ -67,7 +78,10 @@ const RESPONSE_SCHEMA_TEXT = `Respond ONLY with a single JSON object:
   "tags": ["..."],
   "characters": ["<character id>", ...],
   "unknownPeople": [{ "frameIndex": 0, "description": "..." }, ...]
-}`;
+}
+"characters" should be an empty array if no labeled references match.
+"unknownPeople" should always list every visible human-like figure that
+isn't already in "characters".`;
 
 function fileToDataUrl(p: string): string {
   const buf = fs.readFileSync(p);
@@ -116,7 +130,11 @@ export async function captionFromFrames(
 
   const promptText =
     BASE_PROMPT +
-    (usedCharacters.length > 0 ? "\n\n" + CHARACTER_INSTRUCTIONS : "") +
+    "\n\n" +
+    UNKNOWN_PEOPLE_INSTRUCTIONS +
+    (usedCharacters.length > 0
+      ? "\n\n" + CHARACTER_MATCHING_INSTRUCTIONS
+      : "") +
     "\n\n" +
     RESPONSE_SCHEMA_TEXT;
 

@@ -20,6 +20,7 @@ import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
 import Timeline from "../components/Timeline";
 import SceneNavigator from "../components/SceneNavigator";
 import ClipMetaForm from "../components/ClipMetaForm";
+import TagCharacterFromFrame from "../components/TagCharacterFromFrame";
 
 interface Props {
   source: PoolItem;
@@ -437,6 +438,8 @@ export default function EditorOverlay({
         </div>
 
         <CharacterStrip
+          sourceId={source.id}
+          getCurrentTime={() => playerRef.current?.el?.currentTime ?? current}
           characters={characters}
           allCharacters={allCharacters}
           unknownPeople={unknownPeople}
@@ -450,6 +453,16 @@ export default function EditorOverlay({
               cs.find((x) => x.id === c.id) ? cs : [...cs, { id: c.id, name: c.name }]
             )
           }
+          onTagged={(c) =>
+            setCharacters((cs) =>
+              cs.find((x) => x.id === c.id) ? cs : [...cs, c]
+            )
+          }
+          onCharactersChanged={() => {
+            reloadCharacters();
+            onCharactersChanged?.();
+          }}
+          onError={setError}
         />
 
         <ClipMetaForm
@@ -473,6 +486,8 @@ export default function EditorOverlay({
 }
 
 function CharacterStrip({
+  sourceId,
+  getCurrentTime,
   characters,
   allCharacters,
   unknownPeople,
@@ -482,7 +497,12 @@ function CharacterStrip({
   onConnect,
   onIgnore,
   onAddExisting,
+  onTagged,
+  onCharactersChanged,
+  onError,
 }: {
+  sourceId: string;
+  getCurrentTime: () => number;
   characters: MatchedCharacter[];
   allCharacters: Character[];
   unknownPeople: UnknownPerson[];
@@ -492,13 +512,12 @@ function CharacterStrip({
   onConnect: (idx: number, characterId: string) => void;
   onIgnore: (idx: number) => void;
   onAddExisting: (c: Character) => void;
+  onTagged: (c: MatchedCharacter) => void;
+  onCharactersChanged: () => void;
+  onError: (msg: string) => void;
 }) {
   const matchedIds = new Set(characters.map((c) => c.id));
   const addable = allCharacters.filter((c) => !matchedIds.has(c.id));
-
-  const hasContent =
-    characters.length > 0 || unknownPeople.length > 0 || addable.length > 0;
-  if (!hasContent) return null;
 
   return (
     <div className="flex flex-col gap-2 border-t border-ink-800 px-4 py-2">
@@ -531,7 +550,7 @@ function CharacterStrip({
               e.target.value = "";
             }}
           >
-            <option value="">+ add character…</option>
+            <option value="">+ add existing…</option>
             {addable.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -539,6 +558,15 @@ function CharacterStrip({
             ))}
           </select>
         )}
+        <TagCharacterFromFrame
+          sourceId={sourceId}
+          getCurrentTime={getCurrentTime}
+          existingCharacters={allCharacters}
+          alreadyMatched={characters}
+          onTagged={onTagged}
+          onCharactersChanged={onCharactersChanged}
+          onError={onError}
+        />
       </div>
 
       {unknownPeople.length > 0 && (
