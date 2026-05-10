@@ -59,7 +59,7 @@ for (const d of [
 }
 
 export const config = {
-  port: Number(process.env.PORT ?? 5174),
+  port: Number(process.env.PORT ?? 47474),
   projectDir,
   // poolDir == projectDir (sources live at the project root)
   poolDir: projectDir,

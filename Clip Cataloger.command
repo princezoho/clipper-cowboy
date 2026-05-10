@@ -31,7 +31,7 @@ if [ "$NEED_BUILD" = "1" ]; then
   npm run build
 fi
 
-PORT=$(node -e "require('dotenv').config(); console.log(process.env.PORT || 5174)" 2>/dev/null || echo 5174)
+PORT=$(node -e "require('dotenv').config(); console.log(process.env.PORT || 47474)" 2>/dev/null || echo 47474)
 URL="http://localhost:$PORT"
 
 (

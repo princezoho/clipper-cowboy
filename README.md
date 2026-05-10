@@ -22,15 +22,15 @@ Requires Node 18+ (tested with Node 20+). `ffmpeg` and `ffprobe` are bundled via
 cp .env.example .env
 # edit .env — at minimum set OPENAI_API_KEY and PROJECT_DIR
 npm install
-npm run dev          # dev mode: vite UI on :5173, watch-mode API on :5174
+npm run dev          # dev mode: vite UI on :5173, watch-mode API on :47474
 ```
 
 For day-to-day use (no Vite, just one process):
 
 ```bash
 npm run build        # build the React bundle into dist/
-npm start            # serve API + UI on :5174 from dist/
-# open http://localhost:5174
+npm start            # serve API + UI on :47474 from dist/
+# open http://localhost:47474
 ```
 
 ### One-click on macOS
@@ -47,7 +47,7 @@ Single env var: `PROJECT_DIR` (the project folder). If unset, defaults to `~/Cli
 | ---------------- | -------- | ------------------------------------------------- |
 | `OPENAI_API_KEY` | for AI   | GPT-4o calls (caption, character match, auto-cut) |
 | `PROJECT_DIR`    | no       | Project folder. Defaults to `~/ClipCataloger`.    |
-| `PORT`           | no       | API + UI port. Defaults to `5174`.                |
+| `PORT`           | no       | API + UI port. Defaults to `47474` (chosen to avoid conflicts). |
 
 ## Project folder layout
 
