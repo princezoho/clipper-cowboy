@@ -1,45 +1,89 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Character,
+  Draft,
+  DraftInput,
+  ExistingPoolClip,
   ExportMode,
+  LibraryItem,
   MatchedCharacter,
+  NamedRef,
   PoolItem,
   SampleFrame,
-  SceneSegment,
   UnknownPerson,
   addCharacterRef,
   captionClip,
   createCharacter,
-  detectScenes,
+  deleteDraft,
   exportClip,
   fetchCharacters,
-  fetchScenes,
+  fetchDraft,
+  fetchLibrary,
+  fetchPoolClips,
   formatTime,
+  putDraft,
+  reexportLibraryItem,
 } from "../lib/api";
 import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
 import Timeline from "../components/Timeline";
-import SceneNavigator from "../components/SceneNavigator";
 import ClipMetaForm from "../components/ClipMetaForm";
 import TagCharacterFromFrame from "../components/TagCharacterFromFrame";
+import EntityMultiPicker from "../components/EntityMultiPicker";
+import { fireToast } from "../lib/toast";
+import { useDebouncedAutosave } from "../lib/useDebouncedAutosave";
 
 interface Props {
   source: PoolItem;
   onClose: () => void;
   onExported: () => void;
   onCharactersChanged?: () => void;
+  onScenesChanged?: () => void;
+  onObjectsChanged?: () => void;
   hasOpenAIKey: boolean;
+  /** When set, mount in re-export mode for this library clip id. */
+  initialEditClipId?: string | null;
 }
 
 const ESTIMATED_FPS = 30;
+
+/** Authoritative duration + in/out clamped for export / caption (matches timeline). */
+function exportRangeSeconds(
+  video: HTMLVideoElement | null,
+  editorDuration: number,
+  poolDuration: number,
+  inT: number,
+  outT: number
+): { expIn: number; expOut: number; dur: number } {
+  const dur =
+    video && Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : editorDuration > 0
+        ? editorDuration
+        : poolDuration > 0
+          ? poolDuration
+          : 0;
+  if (dur <= 0) {
+    const expIn = Math.max(0, inT);
+    const expOut = Math.max(expIn + 1 / 60, outT);
+    return { expIn, expOut, dur: 0 };
+  }
+  const expIn = Math.max(0, Math.min(inT, dur));
+  const expOut = Math.max(expIn + 1 / 60, Math.min(outT, dur));
+  return { expIn, expOut, dur };
+}
 
 export default function EditorOverlay({
   source,
   onClose,
   onExported,
   onCharactersChanged,
+  onScenesChanged,
+  onObjectsChanged,
   hasOpenAIKey,
+  initialEditClipId,
 }: Props) {
   const playerRef = useRef<VideoPlayerHandle>(null);
+  const inTRef = useRef(0);
 
   const [duration, setDuration] = useState(source.duration || 0);
   const [fps, setFps] = useState(ESTIMATED_FPS);
@@ -47,14 +91,12 @@ export default function EditorOverlay({
   const [inT, setInT] = useState(0);
   const [outT, setOutT] = useState(source.duration || 1);
 
-  const [scenes, setScenes] = useState<SceneSegment[]>([]);
-  const [activeScene, setActiveScene] = useState<number | null>(null);
-  const [detecting, setDetecting] = useState(false);
-
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [characters, setCharacters] = useState<MatchedCharacter[]>([]);
+  const [scenes, setScenes] = useState<NamedRef[]>([]);
+  const [objects, setObjects] = useState<NamedRef[]>([]);
   const [unknownPeople, setUnknownPeople] = useState<UnknownPerson[]>([]);
   const [sampleFrames, setSampleFrames] = useState<SampleFrame[]>([]);
   const [captionCacheKey, setCaptionCacheKey] = useState<string | null>(null);
@@ -65,8 +107,32 @@ export default function EditorOverlay({
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Which trim handle is being dragged on the timeline (for split-pane preview). */
+  const [trimDrag, setTrimDrag] = useState<"in" | "out" | null>(null);
+  /** Existing clips already carved out of this source (for timeline bands). */
+  const [existingClips, setExistingClips] = useState<ExistingPoolClip[]>([]);
+  /** When set, Export becomes "Re-export" — POSTs to /api/library/:id/reexport. */
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
+
+  // ---- Draft autosave -----------------------------------------------------
+  /** True while we're fetching the initial draft for this source. */
+  const [draftLoading, setDraftLoading] = useState(true);
+  /** Restored draft pending user decision (Discard / Keep editing). Null once dismissed. */
+  const [restoredDraft, setRestoredDraft] = useState<Draft | null>(null);
+  /** A draft exists on the server for this source (drives the pill visibility). */
+  const [hasDraft, setHasDraft] = useState(false);
+  /** Last time the draft was saved (server `updatedAt`-style). Drives the "Xs ago" label. */
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  /** Tick once a second so the "Xs ago" pill stays current without re-renders elsewhere. */
+  const [pillNowTick, setPillNowTick] = useState(0);
 
   const captionAbort = useRef<AbortController | null>(null);
+
+  inTRef.current = inT;
+
+  const handleTrimDragChange = useCallback((kind: "in" | "out" | null) => {
+    setTrimDrag(kind);
+  }, []);
 
   async function reloadCharacters() {
     try {
@@ -78,59 +144,113 @@ export default function EditorOverlay({
   }
 
   useEffect(() => {
-    let cancelled = false;
-    fetchScenes(source.id).then((cached) => {
-      if (cancelled || !cached) return;
-      setScenes(cached.segments);
-      if (cached.duration && !duration) setDuration(cached.duration);
-    });
     reloadCharacters();
+  }, [source.id]);
+
+  const reloadExistingClips = useCallback(async () => {
+    try {
+      const r = await fetchPoolClips(source.id);
+      setExistingClips(r.items);
+    } catch {
+      // ignore — bands just won't render
+    }
+  }, [source.id]);
+
+  useEffect(() => {
+    reloadExistingClips();
+  }, [reloadExistingClips]);
+
+  useEffect(() => {
+    if (!initialEditClipId) return;
+    void loadExisting(initialEditClipId);
+    // We intentionally fire only once per id+source — loadExisting is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditClipId, source.id]);
+
+  // Fetch any pre-existing draft for this source on mount. If found, surface
+  // the restore banner; user picks Keep editing / Discard before autosave kicks
+  // in so we don't immediately overwrite their saved work with editor defaults.
+  useEffect(() => {
+    let cancelled = false;
+    setDraftLoading(true);
+    setRestoredDraft(null);
+    setHasDraft(false);
+    setDraftSavedAt(null);
+    fetchDraft(source.id)
+      .then((d) => {
+        if (cancelled) return;
+        if (d) {
+          setRestoredDraft(d);
+          setHasDraft(true);
+          setDraftSavedAt(d.updatedAt);
+        }
+      })
+      .catch(() => {
+        // Ignore — drafts are best-effort.
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [source.id]);
 
-  const onLoaded = useCallback(
-    (info: { duration: number; width: number; height: number }) => {
-      setDuration(info.duration);
-      if (outT === 0 || outT > info.duration) setOutT(info.duration);
-      const v = playerRef.current?.el;
-      if (v) {
-        const guess = guessFps(v);
-        if (guess) setFps(guess);
+  // Tick once per second while a draft exists so the "saved Xs ago" label updates.
+  useEffect(() => {
+    if (!hasDraft || !draftSavedAt) return undefined;
+    const h = window.setInterval(() => setPillNowTick((n) => n + 1), 1000);
+    return () => window.clearInterval(h);
+  }, [hasDraft, draftSavedAt]);
+
+  const loadExisting = useCallback(
+    async (id: string) => {
+      try {
+        const lib = await fetchLibrary();
+        const item = lib.items.find((it: LibraryItem) => it.id === id);
+        if (!item) {
+          setError("Could not find that clip in the library.");
+          return;
+        }
+        setEditingClipId(id);
+        setName(item.name ?? "");
+        setDescription(item.description ?? "");
+        setTags(item.tags ?? []);
+        setCharacters(item.characters ?? []);
+        setScenes(item.scenes ?? []);
+        setObjects(item.objects ?? []);
+        const inV = typeof item.in === "number" ? item.in : 0;
+        const outV =
+          typeof item.out === "number" ? item.out : (item.duration ?? 0) + inV;
+        setInT(inV);
+        setOutT(outV);
+        setExportMode("clip");
+        setStatusMsg(`Editing existing clip: ${item.name}`);
+        setError(null);
+        playerRef.current?.seek(inV);
+      } catch (err) {
+        setError(String(err));
       }
     },
-    [outT]
+    []
   );
 
-  const handleDetect = useCallback(async () => {
-    setDetecting(true);
-    setError(null);
-    try {
-      const r = await detectScenes(source.id);
-      setScenes(r.segments);
-      if (r.duration && !duration) setDuration(r.duration);
-      if (r.segments.length > 0) selectScene(0, r.segments);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setDetecting(false);
+  const onLoaded = useCallback((info: { duration: number; width: number; height: number }) => {
+    const d = info.duration;
+    setDuration(d);
+    setInT((i) => Math.max(0, Math.min(i, d)));
+    setOutT((o) => {
+      if (o > d || o <= 0) return d;
+      // Default `outT` was `1` when pool duration was unknown; expand only if IN still at start.
+      if (d > 2 && Math.abs(o - 1) < 0.02 && inTRef.current < 0.05) return d;
+      return Math.min(o, d);
+    });
+    const v = playerRef.current?.el;
+    if (v) {
+      const guess = guessFps(v);
+      if (guess) setFps(guess);
     }
-  }, [source.id, duration]);
-
-  const selectScene = useCallback(
-    (idx: number, segs?: SceneSegment[]) => {
-      const list = segs ?? scenes;
-      if (idx < 0 || idx >= list.length) return;
-      const s = list[idx];
-      setActiveScene(idx);
-      setInT(s.start);
-      setOutT(s.end);
-      playerRef.current?.seek(s.start);
-      runAutoCaption(s.start, s.end);
-    },
-    [scenes, hasOpenAIKey]
-  );
+  }, []);
 
   const runAutoCaption = useCallback(
     async (a: number, b: number) => {
@@ -159,21 +279,154 @@ export default function EditorOverlay({
     [hasOpenAIKey, source.id]
   );
 
+  // ---- Autosave wiring ----------------------------------------------------
+  const autosaveActive =
+    !draftLoading && !restoredDraft && !editingClipId;
+  const autosaveActiveRef = useRef(autosaveActive);
+  autosaveActiveRef.current = autosaveActive;
+
+  const draftInput: DraftInput = useMemo(() => {
+    const safeIn = Number.isFinite(inT) ? Math.max(0, inT) : 0;
+    const safeOut =
+      Number.isFinite(outT) && outT > safeIn ? outT : safeIn + 1 / 60;
+    return {
+      in: safeIn,
+      out: safeOut,
+      name: name ?? "",
+      description: description ?? "",
+      tags: tags.slice(0, 50),
+      characters: characters.slice(0, 50),
+      scenes: scenes.slice(0, 50),
+      objects: objects.slice(0, 50),
+    };
+  }, [inT, outT, name, description, tags, characters, scenes, objects]);
+  const draftKey = useMemo(() => JSON.stringify(draftInput), [draftInput]);
+  const draftInputRef = useRef(draftInput);
+  draftInputRef.current = draftInput;
+
+  const sourceIdRef = useRef(source.id);
+  sourceIdRef.current = source.id;
+
+  const saveDraft = useCallback(async (_v: string) => {
+    if (!autosaveActiveRef.current) return;
+    const sid = sourceIdRef.current;
+    const saved = await putDraft(sid, draftInputRef.current);
+    if (sourceIdRef.current !== sid) return;
+    setHasDraft(true);
+    setDraftSavedAt(saved.updatedAt);
+  }, []);
+
+  const draftSave = useDebouncedAutosave(draftKey, saveDraft, {
+    debounceMs: 800,
+  });
+
+  const handleDiscardDraft = useCallback(async () => {
+    try {
+      await deleteDraft(source.id);
+    } catch {
+      // best-effort
+    }
+    setRestoredDraft(null);
+    setHasDraft(false);
+    setDraftSavedAt(null);
+    setInT(0);
+    setOutT(duration > 0 ? duration : source.duration || 1);
+    setName("");
+    setDescription("");
+    setTags([]);
+    setCharacters([]);
+    setScenes([]);
+    setObjects([]);
+  }, [source.id, source.duration, duration]);
+
+  const handleKeepDraft = useCallback(() => {
+    if (!restoredDraft) return;
+    setInT(restoredDraft.in);
+    setOutT(restoredDraft.out);
+    setName(restoredDraft.name);
+    setDescription(restoredDraft.description);
+    setTags(restoredDraft.tags);
+    setCharacters(restoredDraft.characters);
+    setScenes(restoredDraft.scenes);
+    setObjects(restoredDraft.objects);
+    setHasDraft(true);
+    setDraftSavedAt(restoredDraft.updatedAt);
+    setRestoredDraft(null);
+    playerRef.current?.seek(restoredDraft.in);
+  }, [restoredDraft]);
+
   const handleAutoFill = useCallback(() => {
-    runAutoCaption(inT, outT);
-  }, [inT, outT, runAutoCaption]);
+    const { expIn, expOut } = exportRangeSeconds(
+      playerRef.current?.el ?? null,
+      duration,
+      source.duration,
+      inT,
+      outT
+    );
+    runAutoCaption(expIn, expOut);
+  }, [inT, outT, duration, source.duration, runAutoCaption]);
 
   const handleExport = useCallback(async () => {
     if (!name.trim()) {
       setError("Give the clip a name first.");
       return;
     }
-    if (exportMode !== "source" && outT - inT < 0.1) {
+    const { expIn, expOut, dur } = exportRangeSeconds(
+      playerRef.current?.el ?? null,
+      duration,
+      source.duration,
+      inT,
+      outT
+    );
+    if (exportMode !== "source" && dur > 0 && expOut - expIn < 0.1) {
       setError("Selection is too short.");
+      return;
+    }
+    if (exportMode !== "source" && dur <= 0) {
+      setError("Video duration not ready yet — wait a moment and try again.");
       return;
     }
     setExporting(true);
     setError(null);
+    if (editingClipId) {
+      setStatusMsg("Re-exporting clip in place…");
+      try {
+        const item = await reexportLibraryItem(editingClipId, {
+          in: expIn,
+          out: expOut,
+          name,
+          description,
+          tags,
+          characters,
+          scenes,
+          objects,
+        });
+        setStatusMsg(`Re-exported ${item.filename} (${item.mode})`);
+        fireToast({
+          kind: "success",
+          title: "Clip re-exported",
+          body: `${item.filename} · ${item.mode}`,
+          action: {
+            label: "Show in Finder",
+            onClick: () => {
+              fetch(`/api/library/${item.id}/reveal`, { method: "POST" }).catch(
+                () => {
+                  // best-effort
+                }
+              );
+            },
+          },
+        });
+        await reloadExistingClips();
+        onExported();
+      } catch (err) {
+        setError(String(err));
+        setStatusMsg(null);
+      } finally {
+        setExporting(false);
+      }
+      return;
+    }
     setStatusMsg(
       exportMode === "bundle"
         ? "Exporting clip + cloning source…"
@@ -184,25 +437,43 @@ export default function EditorOverlay({
     try {
       const item = await exportClip({
         sourceId: source.id,
-        in: inT,
-        out: outT,
+        in: expIn,
+        out: expOut,
         name,
         description,
         tags,
         characters,
+        scenes,
+        objects,
         mode: exportMode,
       });
+      // Clean up the draft for this source — it just became a real clip.
+      deleteDraft(source.id)
+        .then(() => {
+          setHasDraft(false);
+          setDraftSavedAt(null);
+        })
+        .catch(() => {
+          /* best-effort */
+        });
       setStatusMsg(`Exported as ${item.filename} (${item.mode})`);
+      fireToast({
+        kind: "success",
+        title: "Clip exported",
+        body: `${item.filename} · ${item.mode}`,
+        action: {
+          label: "Show in Finder",
+          onClick: () => {
+            fetch(`/api/library/${item.id}/reveal`, { method: "POST" }).catch(
+              () => {
+                // best-effort
+              }
+            );
+          },
+        },
+      });
+      await reloadExistingClips();
       onExported();
-
-      if (scenes.length > 0 && activeScene != null) {
-        const next = activeScene + 1;
-        if (next < scenes.length) {
-          setTimeout(() => selectScene(next), 200);
-        } else {
-          setTimeout(onClose, 600);
-        }
-      }
     } catch (err) {
       setError(String(err));
       setStatusMsg(null);
@@ -214,14 +485,17 @@ export default function EditorOverlay({
     description,
     tags,
     characters,
+    scenes,
+    objects,
     inT,
     outT,
+    duration,
+    source.duration,
     exportMode,
     source.id,
+    editingClipId,
+    reloadExistingClips,
     onExported,
-    scenes,
-    activeScene,
-    selectScene,
     onClose,
   ]);
 
@@ -322,18 +596,6 @@ export default function EditorOverlay({
           e.preventDefault();
           playerRef.current?.stepFrame(e.shiftKey ? 10 : 1);
           break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (activeScene == null && scenes.length > 0) selectScene(0);
-          else if (activeScene != null && activeScene > 0)
-            selectScene(activeScene - 1);
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (activeScene == null && scenes.length > 0) selectScene(0);
-          else if (activeScene != null && activeScene < scenes.length - 1)
-            selectScene(activeScene + 1);
-          break;
         case "i":
         case "I":
           setInT(playerRef.current?.el?.currentTime ?? current);
@@ -352,10 +614,19 @@ export default function EditorOverlay({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeScene, scenes, selectScene, current, handleExport, onClose]);
+  }, [current, handleExport, onClose]);
 
-  const safeIn = Math.max(0, Math.min(inT, duration || inT));
-  const safeOut = Math.max(safeIn, Math.min(outT, duration || outT));
+  const knownDuration = Math.max(duration, source.duration || 0);
+  const safeIn =
+    knownDuration > 0
+      ? Math.max(0, Math.min(inT, knownDuration))
+      : Math.max(0, inT);
+  const safeOut =
+    knownDuration > 0
+      ? Math.max(safeIn, Math.min(outT, knownDuration))
+      : Math.max(safeIn, outT);
+  const trimPreviewT = trimDrag === "out" ? safeOut : safeIn;
+  const videoSrc = `/api/video/${source.id}`;
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-ink-950">
@@ -369,6 +640,13 @@ export default function EditorOverlay({
             ✕ Close
           </button>
           <div className="truncate text-sm text-ink-300">{source.filename}</div>
+          {hasDraft && !editingClipId && (
+            <DraftPill
+              saving={draftSave.state === "saving" || draftSave.state === "pending"}
+              savedAt={draftSavedAt}
+              nowTick={pillNowTick}
+            />
+          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-ink-400">
           {statusMsg && <span className="text-emerald-300">{statusMsg}</span>}
@@ -386,55 +664,121 @@ export default function EditorOverlay({
         </div>
       </div>
 
-      <div className="relative flex-1 overflow-hidden">
-        <VideoPlayer
-          ref={playerRef}
-          src={`/api/video/${source.id}`}
-          fps={fps}
-          onTimeUpdate={setCurrent}
-          onLoaded={onLoaded}
-        />
+      {restoredDraft && !editingClipId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-400/40 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded border border-amber-400/40 bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-amber-100">
+              Draft restored
+            </span>
+            <span className="truncate">
+              IN <span className="font-mono">{formatTime(restoredDraft.in)}</span>{" "}
+              · OUT <span className="font-mono">{formatTime(restoredDraft.out)}</span>{" "}
+              · "{restoredDraft.name || "Untitled"}" ·{" "}
+              {restoredDraft.tags.length} tag
+              {restoredDraft.tags.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded border border-amber-400/40 px-2 py-1 text-xs text-red-300 hover:bg-amber-500/20"
+              onClick={handleDiscardDraft}
+            >
+              Discard draft
+            </button>
+            <button
+              className="rounded bg-amber-400 px-2.5 py-1 text-xs font-medium text-ink-950 hover:bg-amber-300"
+              onClick={handleKeepDraft}
+            >
+              Keep editing
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="relative flex min-h-0 flex-1 flex-col-reverse overflow-hidden md:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:border-r md:border-ink-800">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-800 bg-ink-900 px-2 py-1.5 text-[11px]">
+            <span className="text-ink-500">Trim point</span>
+            <span className="font-mono text-ink-200">
+              <span
+                className={
+                  trimDrag === "out"
+                    ? "text-accent-300"
+                    : trimDrag === "in"
+                      ? "text-accent-300"
+                      : "text-ink-400"
+                }
+              >
+                {trimDrag === "out" ? "OUT" : "IN"}
+              </span>{" "}
+              {formatTime(trimPreviewT)}
+            </span>
+          </div>
+          <div className="relative min-h-[120px] flex-1 md:min-h-0">
+            <TrimPreviewPane
+              src={videoSrc}
+              t={trimPreviewT}
+              duration={knownDuration || duration}
+            />
+          </div>
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-800 bg-ink-900 px-2 py-1.5 text-[11px]">
+            <span className="text-ink-500">Playhead</span>
+            <span className="font-mono text-ink-200">{formatTime(current)}</span>
+          </div>
+          <div className="relative min-h-[120px] flex-1 md:min-h-0">
+            <VideoPlayer
+              ref={playerRef}
+              src={videoSrc}
+              fps={fps}
+              onTimeUpdate={setCurrent}
+              onLoaded={onLoaded}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="border-t border-ink-800">
         <Timeline
-          duration={duration}
+          duration={knownDuration > 0 ? knownDuration : 0.001}
           current={current}
           inT={safeIn}
           outT={safeOut}
-          scenes={scenes}
-          activeSceneIndex={activeScene}
+          scenes={[]}
+          activeSceneIndex={null}
           onSeek={(t) => playerRef.current?.seek(t)}
           onSetIn={setInT}
           onSetOut={setOutT}
-          onSelectScene={(idx) => selectScene(idx)}
+          onTrimDragChange={handleTrimDragChange}
+          existingClips={existingClips}
+          highlightClipId={editingClipId}
+          onLoadExisting={loadExisting}
         />
-
-        <div className="flex flex-wrap items-center gap-3 border-t border-ink-800 px-4 py-2">
-          <SceneNavigator
-            scenes={scenes}
-            activeIndex={activeScene}
-            detecting={detecting}
-            onPrev={() =>
-              activeScene != null && activeScene > 0 && selectScene(activeScene - 1)
-            }
-            onNext={() =>
-              activeScene != null &&
-              activeScene < scenes.length - 1 &&
-              selectScene(activeScene + 1)
-            }
-            onDetect={handleDetect}
-          />
-          <div className="ml-auto flex items-center gap-2 text-xs text-ink-500">
-            <Hotkey>Space</Hotkey> play
-            <Hotkey>I</Hotkey>
-            <Hotkey>O</Hotkey> in/out
-            <Hotkey>←</Hotkey>
-            <Hotkey>→</Hotkey> step
-            <Hotkey>↑</Hotkey>
-            <Hotkey>↓</Hotkey> scene
-            <Hotkey>⏎</Hotkey> export
+        {editingClipId && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-yellow-400/40 bg-yellow-500/15 px-4 py-1.5 text-xs text-yellow-300">
+            <span>
+              Editing existing clip — Export will overwrite this clip in place.
+            </span>
+            <button
+              className="rounded border border-yellow-400/40 px-2 py-0.5 text-[11px] text-yellow-200 hover:bg-yellow-500/20"
+              onClick={() => {
+                setEditingClipId(null);
+                setStatusMsg(null);
+              }}
+            >
+              Cancel re-edit (back to new clip)
+            </button>
           </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-ink-800 px-4 py-2 text-xs text-ink-500">
+          <Hotkey>Space</Hotkey> play
+          <Hotkey>I</Hotkey>
+          <Hotkey>O</Hotkey> in/out
+          <Hotkey>←</Hotkey>
+          <Hotkey>→</Hotkey> step
+          <Hotkey>⏎</Hotkey> export
         </div>
 
         <CharacterStrip
@@ -465,6 +809,25 @@ export default function EditorOverlay({
           onError={setError}
         />
 
+        <div className="flex flex-col gap-2 border-t border-ink-800 px-4 py-2">
+          <EntityMultiPicker
+            kind="scenes"
+            label="Scenes"
+            tone="sky"
+            selected={scenes}
+            onChange={setScenes}
+            onCatalogChanged={onScenesChanged}
+          />
+          <EntityMultiPicker
+            kind="objects"
+            label="Objects"
+            tone="fuchsia"
+            selected={objects}
+            onChange={setObjects}
+            onCatalogChanged={onObjectsChanged}
+          />
+        </div>
+
         <ClipMetaForm
           name={name}
           description={description}
@@ -479,6 +842,7 @@ export default function EditorOverlay({
           hasOpenAIKey={hasOpenAIKey}
           exportMode={exportMode}
           onExportMode={setExportMode}
+          reexportMode={Boolean(editingClipId)}
         />
       </div>
     </div>
@@ -693,6 +1057,52 @@ function UnknownCard({
   );
 }
 
+/** Second video: stays paused, seeks to `t` whenever trim handles move (live trim preview). */
+function TrimPreviewPane({
+  src,
+  t,
+  duration,
+}: {
+  src: string;
+  t: number;
+  duration: number;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const cap =
+      Number.isFinite(v.duration) && v.duration > 0
+        ? v.duration
+        : duration > 0
+          ? duration
+          : t;
+    const maxT = typeof cap === "number" && cap > 0 ? cap : t;
+    const c = Math.max(0, Math.min(t, maxT > 0 ? maxT - 1e-6 : t));
+
+    const apply = () => {
+      if (Math.abs(v.currentTime - c) > 1 / 90) v.currentTime = c;
+    };
+
+    if (v.readyState >= HTMLMediaElement.HAVE_METADATA) apply();
+    else v.addEventListener("loadedmetadata", apply, { once: true });
+  }, [t, src, duration]);
+
+  return (
+    <div className="relative flex h-full w-full items-center justify-center bg-black">
+      <video
+        ref={ref}
+        src={src}
+        className="max-h-full max-w-full object-contain"
+        muted
+        playsInline
+        preload="metadata"
+      />
+    </div>
+  );
+}
+
 function Hotkey({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="rounded border border-ink-700 bg-ink-900 px-1.5 py-0.5 font-mono text-[10px] text-ink-300">
@@ -703,4 +1113,48 @@ function Hotkey({ children }: { children: React.ReactNode }) {
 
 function guessFps(_v: HTMLVideoElement): number | null {
   return null;
+}
+
+function DraftPill({
+  saving,
+  savedAt,
+  nowTick: _nowTick,
+}: {
+  saving: boolean;
+  savedAt: number | null;
+  /** Unused but forces re-render every second so "Xs ago" stays current. */
+  nowTick: number;
+}) {
+  const label = saving
+    ? "Draft · auto-saving"
+    : savedAt
+    ? `Draft saved ${formatRelativeShort(savedAt)}`
+    : "Draft";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-200"
+      title="Auto-saved locally: in/out, name, description, tags, characters, scenes, objects."
+      data-testid="draft-pill"
+    >
+      <span
+        className={
+          "inline-block h-1.5 w-1.5 rounded-full bg-amber-300 " +
+          (saving ? "animate-pulse" : "")
+        }
+        style={{ boxShadow: "0 0 6px rgba(252,211,77,0.7)" }}
+      />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function formatRelativeShort(ts: number): string {
+  const diff = Math.max(0, Date.now() - ts);
+  const sec = Math.round(diff / 1000);
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  return `${hr}h ago`;
 }

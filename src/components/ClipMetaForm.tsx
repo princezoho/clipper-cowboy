@@ -14,6 +14,8 @@ interface Props {
   hasOpenAIKey: boolean;
   exportMode: ExportMode;
   onExportMode: (m: ExportMode) => void;
+  /** When true, swap the Export button copy for a re-export-in-place flow. */
+  reexportMode?: boolean;
 }
 
 const MODE_LABEL: Record<ExportMode, string> = {
@@ -49,6 +51,7 @@ export default function ClipMetaForm({
   hasOpenAIKey,
   exportMode,
   onExportMode,
+  reexportMode,
 }: Props) {
   return (
     <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_auto]">
@@ -104,31 +107,48 @@ export default function ClipMetaForm({
           {captioning ? "Thinking…" : "Auto-fill with AI"}
         </button>
 
-        <div className="flex overflow-hidden rounded-md border border-ink-700 text-xs">
-          {(Object.keys(MODE_LABEL) as ExportMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => onExportMode(m)}
-              title={MODE_TITLE[m]}
-              className={
-                "px-2.5 py-1 transition " +
-                (exportMode === m
-                  ? "bg-accent-500 text-black"
-                  : "bg-ink-900 text-ink-300 hover:bg-ink-800")
-              }
-            >
-              {MODE_LABEL[m]}
-            </button>
-          ))}
-        </div>
+        {!reexportMode && (
+          <div className="flex overflow-hidden rounded-md border border-ink-700 text-xs">
+            {(Object.keys(MODE_LABEL) as ExportMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => onExportMode(m)}
+                title={MODE_TITLE[m]}
+                className={
+                  "px-2.5 py-1 transition " +
+                  (exportMode === m
+                    ? "bg-accent-500 text-black"
+                    : "bg-ink-900 text-ink-300 hover:bg-ink-800")
+                }
+              >
+                {MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
+        )}
 
         <button
           onClick={onExport}
           disabled={exporting || !name.trim()}
-          className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-black shadow hover:bg-accent-400 disabled:opacity-40"
-          title={MODE_TITLE[exportMode] + " (Enter)"}
+          className={
+            "rounded-md px-4 py-2 text-sm font-semibold shadow disabled:opacity-40 " +
+            (reexportMode
+              ? "bg-yellow-400 text-black hover:bg-yellow-300"
+              : "bg-accent-500 text-black hover:bg-accent-400")
+          }
+          title={
+            reexportMode
+              ? "Re-cut this clip from the source and overwrite the existing file in place. (Enter)"
+              : MODE_TITLE[exportMode] + " (Enter)"
+          }
         >
-          {exporting ? "Exporting…" : `${MODE_CTA[exportMode]} ⏎`}
+          {exporting
+            ? reexportMode
+              ? "Re-exporting…"
+              : "Exporting…"
+            : reexportMode
+              ? "Re-export clip ⏎"
+              : `${MODE_CTA[exportMode]} ⏎`}
         </button>
       </div>
     </div>

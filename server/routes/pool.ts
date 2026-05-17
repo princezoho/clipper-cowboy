@@ -9,7 +9,7 @@ import {
 } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { pathToId } from "../util/id.js";
-import { loadState as loadAutoCutState } from "../util/autocut.js";
+import { loadAllDrafts } from "./drafts.js";
 
 export interface PoolItem {
   id: string;
@@ -20,9 +20,6 @@ export interface PoolItem {
   duration: number;
   thumbUrl: string;
   clipCount: number;
-  autoCutStatus: "idle" | "detecting" | "captioning" | "complete" | "error";
-  autoCutDone: number;
-  autoCutTotal: number;
 }
 
 const idToPath = new Map<string, string>();
@@ -122,7 +119,6 @@ router.get("/pool", (_req, res) => {
       cached && cached.size === stat.size && cached.mtime === stat.mtimeMs
         ? cached.duration
         : 0;
-    const ac = loadAutoCutState(id);
     return {
       id,
       filename: path.basename(file),
@@ -132,9 +128,6 @@ router.get("/pool", (_req, res) => {
       duration,
       thumbUrl: `/api/thumb/${id}?t=1`,
       clipCount: clipCounts.get(id) ?? 0,
-      autoCutStatus: ac.status,
-      autoCutDone: ac.done,
-      autoCutTotal: ac.total,
     };
   });
 
@@ -168,6 +161,137 @@ async function warmDurationsAsync(
     warmInFlight = false;
   }
 }
+
+/**
+ * One-shot batch index of every source's clip ranges + merged-coverage seconds.
+ * Used by the Pool grid so 72 cards can render the yellow coverage strip with a
+ * single fetch instead of one-per-card. Reads all sidecars on each call (still
+ * cheap — a few hundred small JSON files) so the response is always fresh.
+ *
+ * NOTE: Must be registered BEFORE the `/pool/:id/clips` route below or Express
+ * will treat "clips-summary" as an `:id` param and call the per-source handler.
+ */
+router.get("/pool/clips-summary", (_req, res) => {
+  const dir = config.clipMetaDir;
+  type Range = { id: string; in: number; out: number; name: string };
+  const bySource = new Map<string, Range[]>();
+  if (fs.existsSync(dir)) {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith(".json")) continue;
+      try {
+        const meta = JSON.parse(
+          fs.readFileSync(path.join(dir, name), "utf8")
+        ) as {
+          id: string;
+          name: string;
+          sourceId?: string;
+          in?: number;
+          out?: number;
+          path?: string;
+          exportMode?: string;
+        };
+        if (!meta.sourceId) continue;
+        if (meta.exportMode === "source") continue;
+        if (meta.in == null || meta.out == null) continue;
+        if (meta.path && !fs.existsSync(meta.path)) continue;
+        const arr = bySource.get(meta.sourceId) ?? [];
+        arr.push({ id: meta.id, name: meta.name, in: meta.in, out: meta.out });
+        bySource.set(meta.sourceId, arr);
+      } catch {
+        // skip malformed
+      }
+    }
+  }
+  const drafts = loadAllDrafts();
+  const out: Record<
+    string,
+    {
+      clips: Range[];
+      coveredSec: number;
+      draft?: { in: number; out: number; updatedAt: number };
+    }
+  > = {};
+  const sourceIds = new Set<string>([...bySource.keys(), ...Object.keys(drafts)]);
+  for (const sid of sourceIds) {
+    const arr = bySource.get(sid) ?? [];
+    arr.sort((a, b) => a.in - b.in);
+    let covered = 0;
+    let curIn = -1;
+    let curOut = -1;
+    for (const r of arr) {
+      if (r.out <= r.in) continue;
+      if (curIn < 0) {
+        curIn = r.in;
+        curOut = r.out;
+        continue;
+      }
+      if (r.in <= curOut) {
+        curOut = Math.max(curOut, r.out);
+      } else {
+        covered += curOut - curIn;
+        curIn = r.in;
+        curOut = r.out;
+      }
+    }
+    if (curIn >= 0) covered += curOut - curIn;
+    const entry: {
+      clips: Range[];
+      coveredSec: number;
+      draft?: { in: number; out: number; updatedAt: number };
+    } = { clips: arr, coveredSec: Number(covered.toFixed(3)) };
+    const d = drafts[sid];
+    if (d) {
+      entry.draft = { in: d.in, out: d.out, updatedAt: d.updatedAt };
+    }
+    out[sid] = entry;
+  }
+  res.json(out);
+});
+
+/**
+ * Lightweight per-source clip index used by the editor timeline to render
+ * "already-clipped" bands over the current source. Reads sidecars directly
+ * each call — cheap (a dozen JSON files) and always fresh after a re-export.
+ */
+router.get("/pool/:id/clips", (req, res) => {
+  const sourceId = req.params.id;
+  const dir = config.clipMetaDir;
+  const items: { id: string; name: string; in: number; out: number; duration: number }[] = [];
+  if (fs.existsSync(dir)) {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith(".json")) continue;
+      try {
+        const meta = JSON.parse(
+          fs.readFileSync(path.join(dir, name), "utf8")
+        ) as {
+          id: string;
+          name: string;
+          sourceId?: string;
+          in?: number;
+          out?: number;
+          duration?: number;
+          path?: string;
+          exportMode?: string;
+        };
+        if (meta.sourceId !== sourceId) continue;
+        if (meta.exportMode === "source") continue;
+        if (meta.in == null || meta.out == null) continue;
+        if (meta.path && !fs.existsSync(meta.path)) continue;
+        items.push({
+          id: meta.id,
+          name: meta.name,
+          in: meta.in,
+          out: meta.out,
+          duration: meta.duration ?? meta.out - meta.in,
+        });
+      } catch {
+        // skip malformed
+      }
+    }
+  }
+  items.sort((a, b) => a.in - b.in);
+  res.json({ items });
+});
 
 router.get("/pool/duration/:id", async (req, res) => {
   const file = resolvePoolId(req.params.id);

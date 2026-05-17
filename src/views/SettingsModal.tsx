@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HealthResponse } from "../lib/api";
 
 interface Props {
@@ -12,6 +12,15 @@ export default function SettingsModal({ current, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Escape closes the modal (matches every other dialog in the app).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function save() {
     setSaving(true);

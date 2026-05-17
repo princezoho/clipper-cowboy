@@ -173,11 +173,10 @@ export async function smartCut(
   const cleanup: string[] = [];
 
   try {
-    const headNeeded = kInNext - inT > KEYFRAME_TOLERANCE;
-    const tailNeeded = outT - kOutPrev > KEYFRAME_TOLERANCE;
-    const midNeeded = kOutPrev - kInNext > KEYFRAME_TOLERANCE;
-
-    if (!headNeeded && !midNeeded && !tailNeeded) {
+    // If kInNext >= kOutPrev the selection sits entirely between two adjacent
+    // keyframes (or extends past the end without crossing one), so head/tail
+    // would overlap if concatenated. Re-encode [inT, outT] in a single pass.
+    if (kInNext >= kOutPrev - KEYFRAME_TOLERANCE) {
       const args = [
         "-ss",
         String(inT),
@@ -196,9 +195,13 @@ export async function smartCut(
       return {
         outputPath,
         mode: "reencode-fallback",
-        details: "Selection sat between two adjacent keyframes; encoded to match source.",
+        details: `Selection sat between two keyframes (in→nextKey=${(kInNext - inT).toFixed(3)}s, prevKey→out=${(outT - kOutPrev).toFixed(3)}s); encoded ${(outT - inT).toFixed(3)}s losslessly.`,
       };
     }
+
+    const headNeeded = kInNext - inT > KEYFRAME_TOLERANCE;
+    const tailNeeded = outT - kOutPrev > KEYFRAME_TOLERANCE;
+    const midNeeded = kOutPrev - kInNext > KEYFRAME_TOLERANCE;
 
     const encoderArgs = pickEncoderArgs(info);
     const audioArgs = pickAudioArgs(info);

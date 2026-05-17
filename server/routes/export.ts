@@ -9,7 +9,9 @@ import { smartCut } from "../smartcut.js";
 import { safeFilename } from "../util/id.js";
 import { cloneOrCopy } from "../util/clone.js";
 import { getDuration } from "../ffmpeg.js";
+import { clampSegmentToDuration } from "../util/timeRange.js";
 import { scheduleShotlistRebuild } from "../util/shotlist.js";
+import { appendActivity } from "../util/activity.js";
 
 const router = Router();
 
@@ -21,6 +23,12 @@ const Body = z.object({
   description: z.string().default(""),
   tags: z.array(z.string()).default([]),
   characters: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .default([]),
+  scenes: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .default([]),
+  objects: z
     .array(z.object({ id: z.string(), name: z.string() }))
     .default([]),
   mode: z.enum(["clip", "source", "bundle"]).default("clip"),
@@ -50,6 +58,8 @@ router.post("/export", async (req, res) => {
     description,
     tags,
     characters,
+    scenes,
+    objects,
     mode,
   } = parsed.data;
   const source = resolvePoolId(sourceId);
@@ -57,7 +67,17 @@ router.post("/export", async (req, res) => {
     res.status(404).json({ error: "source not found" });
     return;
   }
-  if (mode !== "source" && outT - inT < 0.1) {
+
+  const fileDur = await safeDuration(source);
+  let inAdj = inT;
+  let outAdj = outT;
+  if (fileDur != null && fileDur > 0) {
+    const c = clampSegmentToDuration(inT, outT, fileDur);
+    inAdj = c.inT;
+    outAdj = c.outT;
+  }
+
+  if (mode !== "source" && outAdj - inAdj < 0.1) {
     res.status(400).json({ error: "selection too short" });
     return;
   }
@@ -77,7 +97,7 @@ router.post("/export", async (req, res) => {
     if (mode === "clip" || mode === "bundle") {
       clipPath = uniqueOutputPath(config.clipsDir, base, ext);
       cleanupOnFail.push(clipPath);
-      const result = await smartCut(source, inT, outT, clipPath);
+      const result = await smartCut(source, inAdj, outAdj, clipPath);
       cutMode = result.mode;
       details = result.details;
     }
@@ -106,15 +126,17 @@ router.post("/export", async (req, res) => {
       description,
       tags,
       characters,
+      scenes,
+      objects,
       filename: path.basename(primaryPath),
       path: primaryPath,
       source: path.basename(source),
       sourcePath: source,
       sourceId,
       sourceCopyPath: sourceCopyPath ?? undefined,
-      in: inT,
-      out: outT,
-      duration: mode === "source" ? sourceDuration : outT - inT,
+      in: inAdj,
+      out: outAdj,
+      duration: mode === "source" ? sourceDuration : outAdj - inAdj,
       mode: cutMode,
       exportMode: mode,
       details,
@@ -126,6 +148,13 @@ router.post("/export", async (req, res) => {
     );
 
     scheduleShotlistRebuild();
+    appendActivity("clip_exported", {
+      id,
+      name,
+      sourceId,
+      mode: cutMode,
+      durationSec: meta.duration,
+    });
     res.json(meta);
   } catch (err) {
     for (const f of cleanupOnFail) {

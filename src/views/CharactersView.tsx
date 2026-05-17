@@ -8,13 +8,21 @@ import {
   fetchCharacters,
   patchCharacter,
 } from "../lib/api";
+import { fireToast } from "../lib/toast";
 
 interface Props {
   reloadKey?: number;
   onChanged?: () => void;
+  selectedCharacterIds?: Set<string>;
+  onSelectCharacter?: (id: string) => void;
 }
 
-export default function CharactersView({ reloadKey, onChanged }: Props) {
+export default function CharactersView({
+  reloadKey,
+  onChanged,
+  selectedCharacterIds,
+  onSelectCharacter,
+}: Props) {
   const [items, setItems] = useState<Character[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +56,7 @@ export default function CharactersView({ reloadKey, onChanged }: Props) {
     setCreating(true);
     setError(null);
     try {
-      await createCharacter({
+      const created = await createCharacter({
         name: newName.trim(),
         description: newDesc.trim(),
       });
@@ -56,6 +64,11 @@ export default function CharactersView({ reloadKey, onChanged }: Props) {
       setNewDesc("");
       await reload();
       bumpParent();
+      fireToast({
+        kind: "success",
+        title: "Character added",
+        body: created?.name ?? newName.trim(),
+      });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -124,19 +137,32 @@ export default function CharactersView({ reloadKey, onChanged }: Props) {
           feature them.
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-          {items.map((c) => (
-            <CharacterCard
-              key={c.id}
-              character={c}
-              onChanged={() => {
-                reload();
-                bumpParent();
-              }}
-              onError={setError}
-            />
-          ))}
-        </div>
+        <>
+          <div className="text-xs text-ink-400">
+            Click a character card to filter the Library to clips featuring
+            them. Click again to deselect. Select multiple to narrow further
+            (clips must include <em>all</em> selected characters).
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+            {items.map((c) => (
+              <CharacterCard
+                key={c.id}
+                character={c}
+                selected={selectedCharacterIds?.has(c.id) ?? false}
+                onSelect={
+                  onSelectCharacter
+                    ? () => onSelectCharacter(c.id)
+                    : undefined
+                }
+                onChanged={() => {
+                  reload();
+                  bumpParent();
+                }}
+                onError={setError}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -144,10 +170,14 @@ export default function CharactersView({ reloadKey, onChanged }: Props) {
 
 function CharacterCard({
   character,
+  selected,
+  onSelect,
   onChanged,
   onError,
 }: {
   character: Character;
+  selected: boolean;
+  onSelect?: () => void;
   onChanged: () => void;
   onError: (s: string) => void;
 }) {
@@ -179,6 +209,11 @@ function CharacterCard({
     try {
       await deleteCharacter(character.id);
       onChanged();
+      fireToast({
+        kind: "warn",
+        title: "Character deleted",
+        body: character.name,
+      });
     } catch (err) {
       onError(String(err));
     }
@@ -194,9 +229,47 @@ function CharacterCard({
     }
   }
 
+  const cardClasses =
+    "relative flex flex-col overflow-hidden rounded-xl border bg-ink-900 transition " +
+    (selected
+      ? "border-accent-500 ring-2 ring-accent-500/60"
+      : "border-ink-800 hover:border-ink-700");
+
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-ink-800 bg-ink-900">
-      <div className="flex aspect-video items-center justify-center bg-ink-950">
+    <div className={cardClasses}>
+      {selected && (
+        <div
+          className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-accent-500 text-black shadow-md"
+          aria-label="Selected"
+          title="Selected as filter"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              fillRule="evenodd"
+              d="M16.704 5.296a1 1 0 010 1.408l-7.5 7.5a1 1 0 01-1.408 0l-3.5-3.5a1 1 0 011.408-1.408L8.5 12.09l6.796-6.794a1 1 0 011.408 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={!onSelect || editing}
+        title={
+          onSelect && !editing
+            ? selected
+              ? `Click to remove "${character.name}" from the Library filter`
+              : `Click to filter the Library by "${character.name}"`
+            : undefined
+        }
+        className="flex aspect-video items-center justify-center bg-ink-950 text-left transition hover:opacity-90 disabled:cursor-default"
+      >
         {character.thumbUrl ? (
           <img
             src={character.thumbUrl}
@@ -209,7 +282,7 @@ function CharacterCard({
             editor.
           </div>
         )}
-      </div>
+      </button>
 
       <div className="flex flex-1 flex-col gap-2 p-3 text-sm">
         {editing ? (
@@ -225,6 +298,35 @@ function CharacterCard({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description"
             />
+            {character.refs.length > 0 && (
+              <div className="mt-1">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-ink-500">
+                  Reference images
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {character.refs.map((ref) => (
+                    <div
+                      key={ref.name}
+                      className="relative h-12 w-12 overflow-hidden rounded border border-ink-800"
+                    >
+                      <img
+                        src={ref.url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeRef(ref)}
+                        title="Remove this reference image"
+                        className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[12px] text-red-300 ring-1 ring-red-500/60 hover:bg-red-500 hover:text-black"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <button
                 className="text-xs text-ink-400 hover:text-ink-200"
@@ -234,7 +336,7 @@ function CharacterCard({
                   setEditing(false);
                 }}
               >
-                Cancel
+                Done
               </button>
               <button
                 className="rounded bg-accent-500 px-3 py-1 text-xs font-medium text-black hover:bg-accent-400 disabled:opacity-50"
@@ -247,7 +349,21 @@ function CharacterCard({
           </>
         ) : (
           <>
-            <div className="font-medium text-ink-100">{character.name}</div>
+            <button
+              type="button"
+              onClick={onSelect}
+              disabled={!onSelect}
+              title={
+                onSelect
+                  ? selected
+                    ? "Click to remove from Library filter"
+                    : "Click to filter the Library by this character"
+                  : undefined
+              }
+              className="text-left font-medium text-ink-100 hover:text-accent-300 disabled:cursor-default disabled:hover:text-ink-100"
+            >
+              {character.name}
+            </button>
             {character.description && (
               <div className="text-xs text-ink-300">
                 {character.description}
@@ -262,21 +378,16 @@ function CharacterCard({
             {character.refs.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {character.refs.map((ref) => (
-                  <button
+                  <div
                     key={ref.name}
-                    onClick={() => removeRef(ref)}
-                    title="Click to remove this reference"
-                    className="group relative h-12 w-12 overflow-hidden rounded border border-ink-800"
+                    className="relative h-12 w-12 overflow-hidden rounded border border-ink-800"
                   >
                     <img
                       src={ref.url}
                       alt=""
                       className="h-full w-full object-cover"
                     />
-                    <span className="absolute inset-0 hidden items-center justify-center bg-black/70 text-[10px] text-red-300 group-hover:flex">
-                      remove
-                    </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

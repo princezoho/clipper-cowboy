@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { CAPTION_TMP_DIR } from "../config.js";
-import { extractFrameJpeg } from "../ffmpeg.js";
+import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
+import { clampSegmentToDuration } from "../util/timeRange.js";
 import { resolvePoolId } from "./pool.js";
 import { captionFromFrames, CharacterContext } from "../openai.js";
 import { listCharacters, listRefs } from "../util/characters.js";
@@ -62,24 +63,32 @@ router.post("/caption", async (req, res) => {
     res.status(404).json({ error: "source not found" });
     return;
   }
-  if (outT <= inT) {
+
+  let fileDur = 0;
+  try {
+    fileDur = await getDuration(file);
+  } catch {
+    // clampSegment handles dur <= 0
+  }
+  const { inT: inA, outT: outA } = clampSegmentToDuration(inT, outT, fileDur);
+  if (outA <= inA) {
     res.status(400).json({ error: "out must be greater than in" });
     return;
   }
 
   cleanOldCaptionDirs();
 
-  const span = outT - inT;
+  const span = outA - inA;
   const sampleTimes = [
-    inT + span * 0.1,
-    inT + span * 0.5,
-    inT + span * 0.9,
+    inA + span * 0.1,
+    inA + span * 0.5,
+    inA + span * 0.9,
   ].slice(0, FRAMES_PER_CALL);
 
   // A stable-ish cacheKey so the frontend can reference the frames after the
   // request returns (e.g. to promote one to a character ref).
-  const cacheKey = `frames-${sourceId}-${Math.round(inT * 1000)}-${Math.round(
-    outT * 1000
+  const cacheKey = `frames-${sourceId}-${Math.round(inA * 1000)}-${Math.round(
+    outA * 1000
   )}`;
   const dir = path.join(CAPTION_TMP_DIR, cacheKey);
   fs.mkdirSync(dir, { recursive: true });

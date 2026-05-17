@@ -142,50 +142,6 @@ export async function extractFrameJpeg(
   if (r.code !== 0) throw new Error(`extractFrame failed: ${r.stderr}`);
 }
 
-export interface SceneCut {
-  time: number;
-  score: number;
-}
-
-export async function detectScenes(
-  file: string,
-  threshold = 0.4
-): Promise<SceneCut[]> {
-  const r = await ffmpeg([
-    "-i",
-    file,
-    "-filter:v",
-    `select='gt(scene,${threshold})',showinfo`,
-    "-f",
-    "null",
-    "-",
-  ]);
-  if (r.code !== 0) {
-    const r2 = await run(FFMPEG_PATH, [
-      "-hide_banner",
-      "-i",
-      file,
-      "-filter:v",
-      `select='gt(scene,${threshold})',showinfo`,
-      "-f",
-      "null",
-      "-",
-    ]);
-    return parseShowinfo(r2.stderr);
-  }
-  return parseShowinfo(r.stderr);
-}
-
-function parseShowinfo(stderr: string): SceneCut[] {
-  const cuts: SceneCut[] = [];
-  const re = /pts_time:([0-9.]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(stderr))) {
-    cuts.push({ time: Number(m[1]), score: 1 });
-  }
-  return cuts;
-}
-
 export async function getDuration(file: string): Promise<number> {
   const probe = await probeFile(file);
   const d = Number(probe.format.duration ?? 0);

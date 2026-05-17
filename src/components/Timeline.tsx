@@ -12,6 +12,13 @@ interface Props {
   onSetIn: (t: number) => void;
   onSetOut: (t: number) => void;
   onSelectScene?: (idx: number) => void;
+  /** Fires while dragging IN/OUT handles (null when dragging playhead or idle). */
+  onTrimDragChange?: (kind: "in" | "out" | null) => void;
+  /** Already-carved clips on this source — rendered as translucent bands. */
+  existingClips?: { id: string; name: string; in: number; out: number }[];
+  /** Highlighted band id (e.g. when re-editing an existing clip). */
+  highlightClipId?: string | null;
+  onLoadExisting?: (id: string) => void;
 }
 
 type Drag = { kind: "in" | "out" | "playhead" } | null;
@@ -27,6 +34,10 @@ export default function Timeline({
   onSetIn,
   onSetOut,
   onSelectScene,
+  onTrimDragChange,
+  existingClips,
+  highlightClipId,
+  onLoadExisting,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag>(null);
@@ -64,6 +75,12 @@ export default function Timeline({
       window.removeEventListener("mouseup", onUp);
     };
   }, [drag, inT, outT, onSeek, onSetIn, onSetOut, tFromEvent]);
+
+  useEffect(() => {
+    if (!onTrimDragChange) return;
+    const k = drag?.kind;
+    onTrimDragChange(k === "in" || k === "out" ? k : null);
+  }, [drag, onTrimDragChange]);
 
   function pct(t: number): number {
     return (t / safeDuration) * 100;
@@ -116,8 +133,33 @@ export default function Timeline({
           />
         ))}
 
+        {/* Already-carved clips on this source — sit behind the active selection. */}
+        {existingClips?.map((c) => {
+          const isActive = c.id === highlightClipId;
+          return (
+            <div
+              key={c.id}
+              className={
+                "absolute top-0 h-full cursor-pointer transition " +
+                (isActive
+                  ? "bg-[#facc15]/45 border border-[#facc15] ring-1 ring-[#facc15]"
+                  : "bg-[#facc15]/25 border border-[#facc15]/50 hover:bg-[#facc15]/45")
+              }
+              style={{
+                left: `${pct(c.in)}%`,
+                width: `${Math.max(0.1, pct(c.out - c.in))}%`,
+              }}
+              title={`${c.name} — ${formatTime(c.in)} → ${formatTime(c.out)}\nClick to load this clip in the editor`}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                onLoadExisting?.(c.id);
+              }}
+            />
+          );
+        })}
+
         <div
-          className="absolute top-0 h-full bg-accent-500/25 ring-1 ring-accent-500/60"
+          className="pointer-events-none absolute top-0 h-full bg-accent-500/25 ring-1 ring-accent-500/60"
           style={{
             left: `${pct(inT)}%`,
             width: `${Math.max(0, pct(outT - inT))}%`,

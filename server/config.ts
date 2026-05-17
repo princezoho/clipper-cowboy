@@ -35,13 +35,16 @@ function resolveProjectDir(): string {
 const projectDir = resolveProjectDir();
 const clipsDir = path.join(projectDir, "clips");
 const charactersDir = path.join(projectDir, "characters");
+const exportsDir = path.join(projectDir, "exports");
+const imagesDir = path.join(projectDir, "images");
 const internalDir = path.join(projectDir, ".clipcataloger");
 
 const clipMetaDir = path.join(internalDir, "clip-meta");
-const sceneCacheDir = path.join(internalDir, "scenes");
 const thumbCacheDir = path.join(internalDir, "thumbs");
 const captionTmpDir = path.join(internalDir, "caption-tmp");
 const durationsPath = path.join(internalDir, "durations.json");
+const imageMetaDir = path.join(internalDir, "image-meta");
+const imageThumbsDir = path.join(internalDir, "image-thumbs");
 
 const shotlistMdPath = path.join(projectDir, "shotlist.md");
 const shotlistCsvPath = path.join(projectDir, "shotlist.csv");
@@ -49,11 +52,14 @@ const shotlistCsvPath = path.join(projectDir, "shotlist.csv");
 for (const d of [
   clipsDir,
   charactersDir,
+  exportsDir,
+  imagesDir,
   internalDir,
   clipMetaDir,
-  sceneCacheDir,
   thumbCacheDir,
   captionTmpDir,
+  imageMetaDir,
+  imageThumbsDir,
 ]) {
   fs.mkdirSync(d, { recursive: true });
 }
@@ -65,12 +71,15 @@ export const config = {
   poolDir: projectDir,
   clipsDir,
   charactersDir,
+  exportsDir,
+  imagesDir,
   internalDir,
   clipMetaDir,
-  sceneCacheDir,
   thumbCacheDir,
   captionTmpDir,
   durationsPath,
+  imageMetaDir,
+  imageThumbsDir,
   shotlistMdPath,
   shotlistCsvPath,
   openaiApiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
@@ -102,8 +111,22 @@ export function isSupportedVideo(filename: string): boolean {
 export const RESERVED_PROJECT_DIRS = new Set([
   "clips",
   "characters",
+  "exports",
+  "images",
   ".clipcataloger",
 ]);
+
+export const SUPPORTED_IMAGE_EXTS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+]);
+
+export function isSupportedImage(filename: string): boolean {
+  return SUPPORTED_IMAGE_EXTS.has(path.extname(filename).toLowerCase());
+}
 
 // Tags the AI captioner often emits that are noise for a single-style project.
 export const SUPPRESSED_TAGS = new Set<string>([

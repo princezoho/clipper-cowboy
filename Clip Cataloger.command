@@ -1,21 +1,25 @@
 #!/bin/bash
-# Double-click to launch Clip Cataloger.
+# Double-click to launch Clipper Cowboy.
 # This script:
 #   1. cd's into the repo it lives in
 #   2. installs npm deps if needed
 #   3. builds the UI if dist/ is missing or stale
 #   4. starts the server
-#   5. opens http://localhost:5174 in your default browser
+#   5. opens http://localhost:$PORT in your default browser
+#
+# Note: filename kept as "Clip Cataloger.command" for backwards compatibility
+# with existing Finder bookmarks. Rename it to "Clipper Cowboy.command" if
+# you like — nothing else references it by name.
 
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-echo "[clip-cataloger] working in $DIR"
+echo "[clipper-cowboy] working in $DIR"
 
 if [ ! -d node_modules ]; then
-  echo "[clip-cataloger] installing dependencies (one-time, ~30s)…"
+  echo "[clipper-cowboy] installing dependencies (one-time, ~30s)…"
   npm install
 fi
 
@@ -27,7 +31,7 @@ elif [ -n "$(find src server -newer dist/index.html -type f -print -quit 2>/dev/
 fi
 
 if [ "$NEED_BUILD" = "1" ]; then
-  echo "[clip-cataloger] building UI…"
+  echo "[clipper-cowboy] building UI…"
   npm run build
 fi
 
@@ -39,6 +43,6 @@ URL="http://localhost:$PORT"
   open "$URL"
 ) &
 
-echo "[clip-cataloger] launching at $URL"
-echo "[clip-cataloger] press Ctrl+C in this window to stop the app"
+echo "[clipper-cowboy] launching at $URL"
+echo "[clipper-cowboy] press Ctrl+C in this window to stop the app"
 exec npm start

@@ -16,6 +16,7 @@ import {
 } from "../util/characters.js";
 import { extractFrameJpeg } from "../ffmpeg.js";
 import { resolvePoolId } from "./pool.js";
+import { appendActivity } from "../util/activity.js";
 
 const router = Router();
 
@@ -48,6 +49,7 @@ router.post("/characters", (req, res) => {
     return;
   }
   const c = createCharacter(parsed.data);
+  appendActivity("character_created", { id: c.id, name: c.name });
   res.json(withRefUrls(c));
 });
 
@@ -71,11 +73,16 @@ router.patch("/characters/:id", (req, res) => {
 });
 
 router.delete("/characters/:id", (req, res) => {
+  const existing = getCharacter(req.params.id);
   const ok = deleteCharacter(req.params.id);
   if (!ok) {
     res.status(404).json({ error: "not found" });
     return;
   }
+  appendActivity("character_deleted", {
+    id: req.params.id,
+    name: existing?.name ?? "",
+  });
   res.json({ ok: true });
 });
 

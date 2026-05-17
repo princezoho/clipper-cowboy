@@ -8,6 +8,8 @@ interface ClipForShotlist {
   description?: string;
   tags?: string[];
   characters?: { id: string; name: string }[];
+  scenes?: { id: string; name: string }[];
+  objects?: { id: string; name: string }[];
   filename: string;
   source?: string;
   in?: number;
