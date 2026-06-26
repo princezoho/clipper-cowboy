@@ -187,6 +187,26 @@ function AppInner() {
       .catch((e) => setError(String(e)));
   }, []);
 
+  // Auto-rescan when the user returns to the app (switches back to this tab/
+  // window). Drop new clips into the project folder, switch back, and they
+  // show up without anyone remembering to click Refresh. The /api/pool route
+  // re-scans disk on every request, so this is just a re-fetch.
+  useEffect(() => {
+    if (!health?.projectDirConfigured) return;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      reloadPool();
+      reloadLibrary();
+      reloadImages();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [health?.projectDirConfigured]);
+
   async function refreshAfterOnboarding() {
     try {
       const h = await fetchHealth();
@@ -430,6 +450,8 @@ function AppInner() {
             items={pool}
             loading={loadingPool}
             onPick={(item) => setEditing(item)}
+            onChanged={reloadPool}
+            poolDir={health?.projectDir}
           />
         )}
         {tab === "images" && (
