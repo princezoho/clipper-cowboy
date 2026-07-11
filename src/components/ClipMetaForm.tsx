@@ -1,4 +1,4 @@
-import { ExportMode, StemQuality, StemStudioStatus } from "../lib/api";
+import { AudioEngineStatus, ExportMode, StemQuality } from "../lib/api";
 
 interface Props {
   name: string;
@@ -19,8 +19,8 @@ interface Props {
   onRequestStemSetup: () => void;
   stemQuality: StemQuality;
   onStemQuality: (quality: StemQuality) => void;
-  stemStudioStatus: StemStudioStatus | null;
-  stemStudioLoading: boolean;
+  audioEngineStatus: AudioEngineStatus | null;
+  audioEngineLoading: boolean;
   /** When true, swap the Export button copy for a re-export-in-place flow. */
   reexportMode?: boolean;
 }
@@ -49,13 +49,7 @@ const STEM_QUALITY_OPTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  { value: "fast", label: "Fast", description: "Quick single pass." },
-  { value: "high", label: "High", description: "Cleaner multi-pass." },
-  {
-    value: "max",
-    label: "Max",
-    description: "Best detail; extra model license.",
-  },
+  { value: "fast", label: "Fast", description: "Local dialogue, music, and effects split." },
 ];
 
 export default function ClipMetaForm({
@@ -77,14 +71,12 @@ export default function ClipMetaForm({
   onRequestStemSetup,
   stemQuality,
   onStemQuality,
-  stemStudioStatus,
-  stemStudioLoading,
+  audioEngineStatus,
+  audioEngineLoading,
   reexportMode,
 }: Props) {
   const stemModeSupported = exportMode === "clip" || exportMode === "bundle";
-  const stemStudioReady = Boolean(
-    stemStudioStatus?.configured && stemStudioStatus.ready
-  );
+  const audioEngineReady = Boolean(audioEngineStatus?.ready);
 
   return (
     <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_auto]">
@@ -169,7 +161,7 @@ export default function ClipMetaForm({
                 onChange={(event) => {
                   if (event.target.checked) {
                     onCreateStems(true);
-                    if (!stemStudioReady) onRequestStemSetup();
+                    if (!audioEngineReady) onRequestStemSetup();
                   } else {
                     onCreateStems(false);
                   }
@@ -179,24 +171,24 @@ export default function ClipMetaForm({
               <span>Split audio stems</span>
             </label>
             <div className="mt-1 text-[11px] leading-4 text-ink-500">
-              {stemStudioLoading
+              {audioEngineLoading
                 ? "Checking audio splitting…"
-                : stemStudioReady
-                  ? "Dialogue, music, SFX, married mix, and multitrack video."
-                  : "Set up locally the first time you use it."}
+                : audioEngineReady
+                  ? "Dialogue, music, SFX, and married mix."
+                  : "Audio splitting needs a one-time local engine download. It runs on this Mac and may take a few minutes."}
             </div>
 
             {createStems && (
             <div className="mt-2">
               <div
-                className="grid grid-cols-3 gap-1"
+                className="grid grid-cols-1 gap-1"
                 role="radiogroup"
                 aria-label="Stem quality"
               >
                 {STEM_QUALITY_OPTIONS.map((option) => {
                   const selected = stemQuality === option.value;
                   const recommended =
-                    stemStudioStatus?.recommendedQuality === option.value;
+                    audioEngineStatus?.recommendedQuality === option.value;
                   return (
                     <button
                       key={option.value}
@@ -205,9 +197,7 @@ export default function ClipMetaForm({
                       aria-checked={selected}
                       onClick={() => onStemQuality(option.value)}
                       title={
-                        option.value === "max"
-                          ? "Best detail. May download another model; use requires accepting its upstream licensing."
-                          : option.description
+                        option.description
                       }
                       className={
                         "rounded border px-2 py-1.5 text-left transition " +
@@ -228,9 +218,9 @@ export default function ClipMetaForm({
                 })}
               </div>
               <div className="mt-1.5 text-[11px] text-emerald-300">
-                {stemStudioReady
+                {audioEngineReady
                   ? "Runs locally in the background. Keep clipping while it works."
-                  : "Finish setup to queue splitting after export."}
+                  : "Install audio splitting to queue it after export."}
               </div>
             </div>
             )}

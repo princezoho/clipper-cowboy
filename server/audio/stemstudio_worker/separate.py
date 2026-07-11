@@ -1,0 +1,73 @@
+# Derived from Stem Studio's python/stemstudio_worker/separate.py
+# (Apache-2.0), commit fa1bcd092cecca891cb6192d805999165df351e7.
+# Clipper modification: only the vendored deterministic `stub` engine is
+# currently enabled; neural Tiger/MVSEP engines are intentionally not exposed.
+from __future__ import annotations
+import argparse
+import json
+import os
+import sys
+import traceback
+from typing import Dict
+import numpy as np
+from .engine_stub import EngineStub
+
+STEM_FILES = {"dialogue": "dialogue.wav", "music": "music.wav", "effects": "effects.wav"}
+
+def emit(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+def progress(stage: str):
+    return lambda name, percent: emit({"event": "progress", "stage": name or stage, "percent": float(percent)})
+
+def read_wav(source: str):
+    import soundfile as sf
+    return sf.read(source, always_2d=True, dtype="float32")
+
+def write_wav(destination: str, audio: np.ndarray, sample_rate: int) -> None:
+    import soundfile as sf
+    sf.write(destination, audio if audio.ndim == 2 else audio[:, None], sample_rate, subtype="FLOAT")
+
+def run(source: str, outdir: str) -> Dict[str, str]:
+    os.makedirs(outdir, exist_ok=True)
+    engine = EngineStub()
+    engine.load(progress("loading"))
+    audio, sample_rate = read_wav(source)
+    separating = progress("separating")
+    separating("separating", 0.0)
+    stems = engine.separate(audio, sample_rate, separating)
+    separating("separating", 100.0)
+    outputs: Dict[str, str] = {}
+    writing = progress("writing")
+    for index, (key, filename) in enumerate(STEM_FILES.items()):
+        target = os.path.join(outdir, filename)
+        write_wav(target, stems[key], sample_rate)
+        outputs[key] = target
+        writing("writing", (index + 1) / len(STEM_FILES) * 100.0)
+    return outputs
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="stemstudio_worker.separate")
+    parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--input")
+    parser.add_argument("--outdir")
+    parser.add_argument("--engine", default="stub", choices=["stub"])
+    parser.add_argument("--quality", default="fast", choices=["fast"])
+    parser.add_argument("--cache-dir")  # retained upstream worker contract
+    args = parser.parse_args(argv)
+    if args.probe:
+        emit({"device": "cpu", "engines": ["stub"], "quality": ["fast"]})
+        return 0
+    if not args.input or not args.outdir:
+        parser.error("--input and --outdir are required unless --probe is used")
+    try:
+        emit({"event": "done", "outputs": run(args.input, args.outdir)})
+        return 0
+    except Exception as exc:
+        emit({"event": "error", "message": str(exc)})
+        print("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)), file=sys.stderr)
+        return 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())

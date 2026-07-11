@@ -24,14 +24,14 @@
   - MCP has no key, settings, shell, delete, reveal, trash, or generic file tool.
   - AI analysis requires explicit confirmation that sampled frames will be
     uploaded to OpenAI.
-- **Stem Studio runs as an isolated local integration.**
-  - The selected checkout is trusted local code; Clipper verifies package and
-    MCP identity but cannot make an untrusted checkout safe.
-  - Stem receives only allowlisted process settings plus Clipper-derived input
-    and private staging paths. `OPENAI_API_KEY`, `CLIPPER_API_TOKEN`, proxy
-    credentials, and `.env` contents are not forwarded.
-  - Clipper never invokes Stem Studio's environment installer. Model setup and
-    first-use downloads remain explicit Stem Studio operations.
+- **Audio splitting is a managed local capability.**
+  - It uses only Clipper-controlled engine and model directories; users cannot
+    select an executable, checkout, or output directory.
+  - The engine receives only an allowlisted environment. `OPENAI_API_KEY`,
+    `CLIPPER_API_TOKEN`, proxy credentials, and `.env` contents are not
+    forwarded.
+  - Environment installation is initiated only by the explicit in-app install
+    action; model downloads occur on first requested separation.
   - Outputs are validated inside `derived/stems/.jobs/` and renamed into place
     only after the producer stops; existing results are never overwritten.
   - Stem job status is observable when Clipper is attached to its UI server.
@@ -48,7 +48,7 @@ Before sharing with an external collaborator, confirm:
 3. `npm run build` succeeds.
 4. App works without AI key for basic clip/edit/export flows (AI features show as disabled).
 5. No debug logs print secret values.
-6. `npm run stem:smoke` proves the Stem child does not inherit credential
+6. `npm run audio:smoke` proves the audio child does not inherit credential
    sentinels and cannot publish paths outside `derived/stems/`.
 
 ## Required key behavior (current implementation)

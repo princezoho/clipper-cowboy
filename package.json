@@ -22,14 +22,14 @@
     "stop": "bash scripts/desktop-stop.sh",
     "doctor": "node scripts/doctor.mjs",
     "security:smoke": "node scripts/security-smoke.mjs",
-    "stem:smoke": "node scripts/stem-integration-smoke.mjs",
+    "audio:smoke": "node scripts/audio-engine-smoke.mjs",
     "mcp:setup": "npm --prefix mcp install && npm run mcp:build",
     "mcp:build": "npm --prefix mcp run build",
     "mcp:typecheck": "npm --prefix mcp run typecheck",
     "mcp:test": "npm --prefix mcp test",
     "mcp:smoke": "npm --prefix mcp run smoke",
     "mcp:verify": "npm run mcp:typecheck && npm run mcp:test && npm run mcp:smoke",
-    "verify": "npm run typecheck && npm run build && npm run mcp:verify && npm run security:smoke && npm run stem:smoke && npm run doctor",
+    "verify": "npm run typecheck && npm run build && npm run mcp:verify && npm run security:smoke && npm run audio:smoke && npm run doctor",
     "public:ready": "bash scripts/public-ready-check.sh"
   },
   "dependencies": {

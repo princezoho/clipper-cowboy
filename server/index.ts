@@ -89,7 +89,6 @@ app.get("/api/health", (_req, res) => {
     shotlistMd: config.shotlistMdPath,
     shotlistCsv: config.shotlistCsvPath,
     hasOpenAIKey: Boolean(config.openaiApiKey),
-    stemStudioConfigured: config.stemStudioConfigured,
     projectDirConfigured,
   });
 });

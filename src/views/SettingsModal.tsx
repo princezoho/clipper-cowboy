@@ -1,11 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  fetchStemStudioSetup,
-  fetchStemStudioStatus,
-  finishStemStudioSetup,
-  HealthResponse,
-  StemStudioStatus,
-} from "../lib/api";
+import { HealthResponse } from "../lib/api";
 
 interface Props {
   current: HealthResponse;
@@ -15,37 +9,9 @@ interface Props {
 export default function SettingsModal({ current, onClose }: Props) {
   const [projectDir, setProjectDir] = useState(current.projectDir);
   const [apiKey, setApiKey] = useState("");
-  const [stemStudioRoot, setStemStudioRoot] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stemStatus, setStemStatus] = useState<StemStudioStatus | null>(null);
-  const [finishingStemSetup, setFinishingStemSetup] = useState(false);
-
-  useEffect(() => {
-    fetchStemStudioStatus().then(setStemStatus).catch(() => setStemStatus(null));
-  }, []);
-
-  async function finishAudioSetup() {
-    setFinishingStemSetup(true);
-    setError(null);
-    try {
-      let job = await finishStemStudioSetup();
-      while (job.status === "queued" || job.status === "running") {
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        job = await fetchStemStudioSetup();
-      }
-      if (job.status === "error") throw new Error(job.message);
-      setStemStatus(await fetchStemStudioStatus());
-      setNote("Stem Studio's local helper is ready.");
-    } catch {
-      setError(
-        "Stem Studio setup could not finish. Open Stem Studio to complete its setup, then try again."
-      );
-    } finally {
-      setFinishingStemSetup(false);
-    }
-  }
 
   // Escape closes the modal (matches every other dialog in the app).
   useEffect(() => {
@@ -63,9 +29,6 @@ export default function SettingsModal({ current, onClose }: Props) {
     try {
       const body: Record<string, string> = { projectDir };
       if (apiKey.trim()) body.openaiApiKey = apiKey.trim();
-      if (stemStudioRoot.trim()) {
-        body.stemStudioRoot = stemStudioRoot.trim();
-      }
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,6 +64,7 @@ export default function SettingsModal({ current, onClose }: Props) {
         </div>
 
         <div className="space-y-4 px-4 py-4 text-sm">
+          {/*
           <Field
             label="Project folder"
             hint="One folder = one project. Source montages live at the root; clips go in clips/, characters in characters/, shotlist.md/csv at the root."
@@ -112,6 +76,7 @@ export default function SettingsModal({ current, onClose }: Props) {
               placeholder="/Users/you/Desktop/your-project"
             />
           </Field>
+          */}
 
           <div className="rounded-md border border-ink-800 bg-ink-950/40 px-3 py-2 font-mono text-[11px] text-ink-400">
             <div>
@@ -183,6 +148,7 @@ export default function SettingsModal({ current, onClose }: Props) {
             </div>
           </details>
 
+          {/*
           <Field
             label="Stem Studio installation folder"
             hint={
@@ -221,6 +187,7 @@ export default function SettingsModal({ current, onClose }: Props) {
               </button>
             )}
           </Field>
+          */}
 
           {error && (
             <div className="rounded bg-red-950/40 px-3 py-2 text-xs text-red-200">

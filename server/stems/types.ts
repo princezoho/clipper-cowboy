@@ -1,4 +1,4 @@
-export type StemQuality = "fast" | "high" | "max";
+export type StemQuality = "fast";
 
 export type StemJobStatus =
   | "queued"
@@ -23,10 +23,9 @@ export interface StemJobSummary {
 }
 
 export interface StemStudioStatus {
-  configured: boolean;
   ready: boolean;
-  helperSetupRequired?: boolean;
-  device?: "cpu" | "mps" | "cuda";
+  installing: boolean;
+  pythonAvailable: boolean;
   recommendedQuality?: StemQuality;
-  message?: string;
+  message: string;
 }

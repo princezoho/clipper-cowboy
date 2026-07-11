@@ -57,7 +57,7 @@ export default function StemJobsIndicator({
             if ((before === "queued" || before === "running") && job.status === "done") {
               fireToast({
                 kind: "success",
-                title: "Audio stems are ready",
+                title: "Audio splitting is ready",
                 body: `${job.clipName} · ${job.quality} quality`,
                 ...(job.outputDir
                   ? {
@@ -75,8 +75,8 @@ export default function StemJobsIndicator({
             ) {
               fireToast({
                 kind: "error",
-                title: "Stem separation stopped",
-                body: `${job.clipName}: ${job.error || "Open Stems for details."}`,
+                title: "Audio splitting stopped",
+                body: `${job.clipName}: ${job.error || "Open Audio splitting for details."}`,
                 durationMs: 7000,
               });
             }
@@ -152,20 +152,20 @@ export default function StemJobsIndicator({
             : "border-ink-700 bg-ink-900 text-ink-300 hover:bg-ink-800")
         }
         aria-expanded={open}
-        title="Background Stem Studio jobs"
+        title="Background audio splitting jobs"
       >
         {active > 0
           ? `Stems: ${running ? `${running} running` : ""}${
               running && queued ? " · " : ""
             }${queued ? `${queued} queued` : ""}`
-          : "Stems"}
+          : "Audio"}
       </button>
 
       {open && (
         <div className="absolute right-0 top-full z-40 mt-2 w-[24rem] overflow-hidden rounded-lg border border-ink-700 bg-ink-900 shadow-xl shadow-black/50">
           <div className="border-b border-ink-800 px-3 py-2">
             <div className="text-sm font-medium text-ink-100">
-              Background audio stems
+              Background audio splitting
             </div>
             <div className="mt-0.5 text-[11px] text-ink-500">
               One local separation runs at a time, so editing stays responsive.
@@ -174,7 +174,7 @@ export default function StemJobsIndicator({
           <div className="max-h-80 overflow-y-auto">
             {jobs.length === 0 ? (
               <div className="px-3 py-6 text-center text-xs text-ink-500">
-                No stem jobs yet.
+                No audio splitting jobs yet.
               </div>
             ) : (
               jobs.slice(0, 10).map((job) => (

@@ -11,11 +11,9 @@ import {
   PoolItem,
   SampleFrame,
   StemQuality,
-  StemStudioStatus,
-  StemStudioCandidate,
+  AudioEngineStatus,
   UnknownPerson,
   ApiError,
-  discoverStemStudioInstallations,
   addCharacterRef,
   captionClip,
   createCharacter,
@@ -25,15 +23,12 @@ import {
   fetchDraft,
   fetchLibrary,
   fetchPoolClips,
-  fetchStemStudioSetup,
-  fetchStemStudioStatus,
-  finishStemStudioSetup,
+  fetchAudioEngineInstall,
+  fetchAudioEngineStatus,
+  installAudioEngine,
   formatTime,
   putDraft,
   reexportLibraryItem,
-  selectStemStudioFolder,
-  repairStemStudioConfig,
-  useStemStudioInstallation,
 } from "../lib/api";
 import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
 import Timeline from "../components/Timeline";
@@ -62,9 +57,7 @@ const STEM_QUALITY_STORAGE_KEY = "cowboy.stemQuality";
 function readStoredStemQuality(): StemQuality | null {
   try {
     const value = window.localStorage.getItem(STEM_QUALITY_STORAGE_KEY);
-    return value === "fast" || value === "high" || value === "max"
-      ? value
-      : null;
+    return value === "fast" ? value : null;
   } catch {
     return null;
   }
@@ -146,16 +139,12 @@ export default function EditorOverlay({
   const [stemQuality, setStemQuality] = useState<StemQuality>(
     initialStemPreference.quality
   );
-  const [stemStudioStatus, setStemStudioStatus] =
-    useState<StemStudioStatus | null>(null);
-  const [stemStudioLoading, setStemStudioLoading] = useState(true);
-  const [stemSetupRepairRequired, setStemSetupRepairRequired] = useState(false);
+  const [audioEngineStatus, setAudioEngineStatus] =
+    useState<AudioEngineStatus | null>(null);
+  const [audioEngineLoading, setAudioEngineLoading] = useState(true);
   const [showStemSetup, setShowStemSetup] = useState(false);
   const [stemSetupBusy, setStemSetupBusy] = useState(false);
   const [stemSetupError, setStemSetupError] = useState<string | null>(null);
-  const [stemSetupTechnicalDetails, setStemSetupTechnicalDetails] = useState<string | null>(
-    null
-  );
   const [captioning, setCaptioning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -213,160 +202,60 @@ export default function EditorOverlay({
     reloadExistingClips();
   }, [reloadExistingClips]);
 
-  const refreshStemStudioStatus = useCallback(async () => {
-    setStemStudioLoading(true);
+  const refreshAudioEngineStatus = useCallback(async () => {
+    setAudioEngineLoading(true);
     try {
-      const status = await fetchStemStudioStatus();
-      setStemStudioStatus(status);
+      const status = await fetchAudioEngineStatus();
+      setAudioEngineStatus(status);
       if (!initialStemPreference.wasStored && status.recommendedQuality) {
         setStemQuality(status.recommendedQuality);
       }
       return status;
     } catch {
       const status = {
-        configured: false,
         ready: false,
+        installing: false,
+        pythonAvailable: false,
         message: "Audio splitting is not ready yet.",
       };
-      setStemStudioStatus(status);
+      setAudioEngineStatus(status);
       return status;
     } finally {
-      setStemStudioLoading(false);
+      setAudioEngineLoading(false);
     }
   }, [initialStemPreference.wasStored]);
 
   useEffect(() => {
     let cancelled = false;
-    refreshStemStudioStatus().then((status) => {
+    refreshAudioEngineStatus().then((status) => {
       if (cancelled) return;
-      setStemStudioStatus(status);
+      setAudioEngineStatus(status);
     });
     return () => {
       cancelled = true;
     };
-  }, [refreshStemStudioStatus]);
+  }, [refreshAudioEngineStatus]);
 
   const handleStemSetup = useCallback(async () => {
     setStemSetupBusy(true);
     setStemSetupError(null);
-    setStemSetupTechnicalDetails(null);
     try {
-      await selectStemStudioFolder();
-      const status = await refreshStemStudioStatus();
-      if (status.ready) {
-        setShowStemSetup(false);
-      } else {
-        setStemSetupError(
-          status.message ||
-            "The splitter still needs its local dependencies. Finish its setup, then check again."
-        );
-      }
-    } catch (err) {
-      setStemSetupRepairRequired(
-        err instanceof ApiError && err.code === "stem_studio_config_repair_required"
-      );
-      setStemSetupError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStemSetupBusy(false);
-    }
-  }, [refreshStemStudioStatus]);
-
-  const handleUseDiscoveredStemStudio = useCallback(
-    async (id: string) => {
-      setStemSetupBusy(true);
-      setStemSetupError(null);
-      setStemSetupTechnicalDetails(null);
-      try {
-        await useStemStudioInstallation(id);
-        const status = await refreshStemStudioStatus();
-        if (status.ready) {
-          setShowStemSetup(false);
-        } else {
-          setStemSetupError(
-            status.message ||
-              "Stem Studio was found, but it needs to finish its own first-time setup before it can split audio."
-          );
-        }
-      } catch (err) {
-        setStemSetupRepairRequired(
-          err instanceof ApiError && err.code === "stem_studio_config_repair_required"
-        );
-        setStemSetupError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setStemSetupBusy(false);
-      }
-    },
-    [refreshStemStudioStatus]
-  );
-
-  const handleRepairStemStudioSetup = useCallback(async () => {
-    setStemSetupBusy(true);
-    setStemSetupError(null);
-    setStemSetupTechnicalDetails(null);
-    try {
-      await repairStemStudioConfig();
-      setStemSetupRepairRequired(false);
-      setStemSetupError(
-        "Old setup backed up safely. Use the verified Stem Studio installation or choose its folder again."
-      );
-    } catch (err) {
-      setStemSetupError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStemSetupBusy(false);
-    }
-  }, []);
-
-  const handleStemSetupCheck = useCallback(async () => {
-    setStemSetupBusy(true);
-    setStemSetupError(null);
-    setStemSetupTechnicalDetails(null);
-    try {
-      const status = await refreshStemStudioStatus();
-      if (status.ready) setShowStemSetup(false);
-      else {
-        setStemSetupError(
-          status.message ||
-            "The splitter still needs its local dependencies. Finish its setup, then try again."
-        );
-      }
-    } finally {
-      setStemSetupBusy(false);
-    }
-  }, [refreshStemStudioStatus]);
-
-  const handleFinishStemSetup = useCallback(async () => {
-    setStemSetupBusy(true);
-    setStemSetupError(null);
-    setStemSetupTechnicalDetails(null);
-    try {
-      let job = await finishStemStudioSetup();
+      let job = await installAudioEngine();
       for (let attempt = 0; job.status === "queued" || job.status === "running"; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        job = await fetchStemStudioSetup();
-        if (attempt >= 600) throw new Error("Setup is taking longer than expected. Check again shortly.");
+        job = await fetchAudioEngineInstall();
+        if (attempt >= 900) throw new Error("Installation is taking longer than expected. Check again shortly.");
       }
-      if (job.status === "error") {
-        setStemSetupError(job.message);
-        setStemSetupTechnicalDetails(job.technicalDetails ?? null);
-        return;
-      }
-      const status = await refreshStemStudioStatus();
-      if (status.ready) {
-        setShowStemSetup(false);
-      } else {
-        setStemSetupError(
-          status.message ||
-            "Stem Studio's local helper is ready. Open Stem Studio to complete its first-time audio setup, then check again."
-        );
-      }
-    } catch {
-      setStemSetupError(
-        "Stem Studio setup could not finish. Open Stem Studio to complete its setup, then try again."
-      );
+      if (job.status === "error") throw new Error(job.message);
+      const status = await refreshAudioEngineStatus();
+      if (status.ready) setShowStemSetup(false);
+      else setStemSetupError(status.message);
+    } catch (err) {
+      setStemSetupError(err instanceof Error ? err.message : "Audio engine installation could not finish.");
     } finally {
       setStemSetupBusy(false);
     }
-  }, [refreshStemStudioStatus]);
+  }, [refreshAudioEngineStatus]);
 
   useEffect(() => {
     setCreateStems(false);
@@ -597,7 +486,7 @@ export default function EditorOverlay({
     }
     if (
       createStems &&
-      !(stemStudioStatus?.configured === true && stemStudioStatus.ready)
+      !audioEngineStatus?.ready
     ) {
       setShowStemSetup(true);
       setError("Set up audio splitting before exporting with stems.");
@@ -625,8 +514,7 @@ export default function EditorOverlay({
       try {
         const requestStems =
           createStems &&
-          stemStudioStatus?.configured === true &&
-          stemStudioStatus.ready;
+          audioEngineStatus?.ready;
         const item = await reexportLibraryItem(editingClipId, {
           in: expIn,
           out: expOut,
@@ -669,7 +557,7 @@ export default function EditorOverlay({
           fireToast({
             kind: "warn",
             title: "Clip re-exported; stems did not start",
-            body: item.stemJob?.error || "Check the Stem Studio connection.",
+            body: item.stemJob?.error || "Check audio splitting setup.",
           });
         }
         setCreateStems(false);
@@ -694,8 +582,7 @@ export default function EditorOverlay({
       const requestStems =
         createStems &&
         exportMode !== "source" &&
-        stemStudioStatus?.configured === true &&
-        stemStudioStatus.ready;
+        audioEngineStatus?.ready;
       const item = await exportClip({
         sourceId: source.id,
         in: expIn,
@@ -749,7 +636,7 @@ export default function EditorOverlay({
         fireToast({
           kind: "warn",
           title: "Clip exported; stems did not start",
-          body: item.stemJob?.error || "Check the Stem Studio connection.",
+          body: item.stemJob?.error || "Check audio splitting setup.",
         });
       }
       setCreateStems(false);
@@ -775,7 +662,7 @@ export default function EditorOverlay({
     exportMode,
     createStems,
     stemQuality,
-    stemStudioStatus,
+    audioEngineStatus,
     source.id,
     editingClipId,
     reloadExistingClips,
@@ -1131,38 +1018,23 @@ export default function EditorOverlay({
           }}
           createStems={createStems}
           onCreateStems={setCreateStems}
-          onRequestStemSetup={() => {
-            setStemSetupError(null);
-            setStemSetupTechnicalDetails(null);
-            setStemSetupRepairRequired(false);
-            setShowStemSetup(true);
-          }}
+          onRequestStemSetup={() => { setStemSetupError(null); setShowStemSetup(true); }}
           stemQuality={stemQuality}
           onStemQuality={handleStemQuality}
-          stemStudioStatus={stemStudioStatus}
-          stemStudioLoading={stemStudioLoading}
+          audioEngineStatus={audioEngineStatus}
+          audioEngineLoading={audioEngineLoading}
           reexportMode={Boolean(editingClipId)}
         />
       </div>
       {showStemSetup && (
         <AudioSplittingSetupModal
-          connected={Boolean(stemStudioStatus?.configured)}
-          helperSetupRequired={Boolean(stemStudioStatus?.helperSetupRequired)}
           busy={stemSetupBusy}
           error={stemSetupError}
-          technicalDetails={stemSetupTechnicalDetails}
-          repairRequired={stemSetupRepairRequired}
-          onChooseFolder={handleStemSetup}
-          onUseCandidate={handleUseDiscoveredStemStudio}
-          onRepairConfig={handleRepairStemStudioSetup}
-          onCheckAgain={handleStemSetupCheck}
-          onFinishSetup={handleFinishStemSetup}
+          onInstall={handleStemSetup}
           onNotNow={() => {
             setCreateStems(false);
             setShowStemSetup(false);
             setStemSetupError(null);
-            setStemSetupTechnicalDetails(null);
-            setStemSetupRepairRequired(false);
           }}
         />
       )}
@@ -1171,32 +1043,35 @@ export default function EditorOverlay({
 }
 
 function AudioSplittingSetupModal({
-  connected,
-  helperSetupRequired,
   busy,
   error,
-  technicalDetails,
-  repairRequired,
-  onChooseFolder,
-  onUseCandidate,
-  onRepairConfig,
-  onCheckAgain,
-  onFinishSetup,
+  onInstall,
   onNotNow,
 }: {
-  connected: boolean;
-  helperSetupRequired: boolean;
   busy: boolean;
   error: string | null;
-  technicalDetails: string | null;
-  repairRequired: boolean;
-  onChooseFolder: () => void;
-  onUseCandidate: (id: string) => void;
-  onRepairConfig: () => void;
-  onCheckAgain: () => void;
-  onFinishSetup: () => void;
+  onInstall: () => void;
   onNotNow: () => void;
 }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div className="w-full max-w-md rounded-xl border border-ink-800 bg-ink-900 shadow-xl" role="dialog" aria-modal="true">
+        <div className="space-y-3 px-5 py-5">
+          <h2 className="text-base font-semibold">Install audio splitting</h2>
+          <p className="text-sm leading-5 text-ink-300">Audio splitting needs a one-time local engine download. It runs on this Mac and may take a few minutes.</p>
+          <p className="text-xs leading-5 text-ink-500">Models download automatically the first time you split audio.</p>
+          {error && <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{error}</div>}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
+          <button className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100" onClick={onNotNow} disabled={busy}>Not now</button>
+          <button className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50" onClick={onInstall} disabled={busy}>
+            {busy ? "Installing…" : "Install audio splitting"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  /*
   const [candidates, setCandidates] = useState<StemStudioCandidate[]>([]);
   const [discovering, setDiscovering] = useState(true);
 
@@ -1354,6 +1229,7 @@ function AudioSplittingSetupModal({
       </div>
     </div>
   );
+*/
 }
 
 function CharacterStrip({

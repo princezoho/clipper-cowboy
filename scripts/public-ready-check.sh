@@ -94,17 +94,17 @@ else
   exit 1
 fi
 
-printf "3e) Isolated background Stem Studio smoke...\n"
-if npm run stem:smoke >"$TMP_DIR/stem-smoke.log" 2>&1; then
+printf "3e) Managed background audio smoke...\n"
+if npm run audio:smoke >"$TMP_DIR/stem-smoke.log" 2>&1; then
   echo "   OK: asynchronous export, credential isolation, and atomic stem publication passed."
 else
-  echo "   ERROR: background Stem Studio integration smoke failed."
+  echo "   ERROR: managed background audio smoke failed."
   cat "$TMP_DIR/stem-smoke.log"
   exit 1
 fi
 
 printf "4) Validate required docs exist...\n"
-for f in README.md SECURITY.md AGENTS.md docs/INTEGRATIONS.md mcp/README.md .env.example .github/CODEOWNERS; do
+for f in README.md SECURITY.md THIRD_PARTY_NOTICES.md AGENTS.md mcp/README.md .env.example .github/CODEOWNERS; do
    if [ -f "$f" ]; then
      echo "   OK: $f exists"
    else

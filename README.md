@@ -114,11 +114,10 @@ MCP server can also let Codex and other compatible agents inspect sources,
 search clips, update metadata, export clips, and request explicitly confirmed
 OpenAI analysis. Start with the [MCP guide](./mcp/README.md).
 
-Optional integrations support that core workflow. For example, Clipper Cowboy
-can hand a completed clip to the official Stem Studio MCP server for local audio
-separation; it does not bundle Stem Studio or exchange credentials. Read the
-[Stem Studio integration guide](./docs/INTEGRATIONS.md) for setup and lifecycle
-limits.
+Audio splitting is a built-in local capability. Its managed worker is adapted
+from [Stem Studio](https://github.com/wassermanproductions/stem-studio) source;
+it is not a separate app, checkout, or MCP dependency. See
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ## Privacy and security
 
@@ -152,9 +151,6 @@ Security-first defaults:
 | `PROJECT_DIR` | no | Project folder. Defaults to `~/ClipCataloger`. |
 | `OPENAI_API_KEY` | no | Optional GPT-4o calls for captioning and recognition. |
 | `PORT` | no | Production server port. Defaults to `47474`. |
-| `CLIPPER_STEM_STUDIO_ROOT` | no | Trusted local Stem Studio checkout. |
-| `CLIPPER_STEM_STUDIO_PYTHON` | no | Optional Stem Studio Python override. |
-| `CLIPPER_STEM_STUDIO_CACHE` | no | Optional Stem Studio model-cache override. |
 | `CLIPPER_STEMS_TIMEOUT_MINUTES` | no | Per-job safety timeout; defaults to 360 minutes. |
 
 See [`.env.example`](./.env.example) for the documented placeholder template.
@@ -162,17 +158,16 @@ See [`.env.example`](./.env.example) for the documented placeholder template.
 ### Background audio stems
 
 Choose **Split audio stems** on a **Clip** or **Clip + Source** export. The
-first use opens local setup; select a trusted Stem Studio checkout and finish
-its own dependency setup if needed. Clipper processes one local job at a time
-and publishes verified outputs under
+first use installs Clipper Cowboy's managed local engine after an explicit
+click; it may download models on first separation. Clipper processes one local
+job at a time and publishes verified outputs under
 `PROJECT_DIR/derived/stems/`; a stem failure does not invalidate the clip
-export. No hosted key is required for separation, and Clipper does not forward
-its OpenAI key or local API token to Stem Studio.
+export. No hosted key is required for separation, and no keys are passed to the
+audio process.
 
-Fast is the default automatic recommendation. High is recommended for capable
-hardware. Max uses Stem Studio's additional MVSEP model and is an explicit user
-choice because its upstream licensing needs separate review. See
-[docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
+This release exposes the managed worker's Fast mode. High and Max are withheld
+until their upstream Tiger/MVSEP model-code and licensing boundaries can be
+carried through safely; see the third-party notice.
 
 ### Architecture
 

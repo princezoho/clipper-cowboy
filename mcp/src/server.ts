@@ -543,7 +543,7 @@ export function createServer(
     title: "Search exported clips",
     description:
       "Search the Clipper library by text, source ID, or tags. Returns canonical local " +
-      "output paths suitable for direct handoff to Stem Studio. Unsafe sidecar paths are rejected.",
+      "output paths suitable for Clipper Cowboy's managed audio splitting. Unsafe sidecar paths are rejected.",
     inputSchema: {
       query: z.string().max(200).optional(),
       source_id: z.string().optional(),
@@ -616,7 +616,7 @@ export function createServer(
     description:
       "Smart-cut a time range from a catalogued source into PROJECT_DIR/clips and persist " +
       "its metadata. Accepts IDs only—no arbitrary paths or output directory. Returns the " +
-      "actual collision-safe output path and suggested Stem Studio directory. Runtime ranges " +
+      "actual collision-safe output path and suggested managed-audio directory. Runtime ranges " +
       "from seconds to minutes. wait:false returns a job_id for check_job.",
     inputSchema: {
       source_id: z.string(),
@@ -682,7 +682,7 @@ export function createServer(
               outputPath,
               result.id
             ),
-            next_tool: "stem-studio.separate_stems",
+            next_tool: "clipper.audio_splitting",
           },
         };
       });

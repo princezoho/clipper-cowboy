@@ -34,7 +34,7 @@ const Body = z.object({
     .default([]),
   mode: z.enum(["clip", "source", "bundle"]).default("clip"),
   stems: z
-    .object({ quality: z.enum(["fast", "high", "max"]) })
+    .object({ quality: z.literal("fast") })
     .optional(),
 }).superRefine((value, ctx) => {
   if (value.mode === "source" && value.stems) {

@@ -1,27 +1,11 @@
-import { Router, type Response } from "express";
-import { execFile } from "node:child_process";
+import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { promisify } from "node:util";
 import { z } from "zod";
-import {
-  config,
-  repairStemStudioConfigArtifact,
-  setStemStudioRoot,
-  StemStudioConfigError,
-} from "../config.js";
-import {
-  discoverStemStudioInstallations,
-  getDiscoveredStemStudioInstallation,
-  stemStudioFolderMessage,
-  validateStemStudioInstallation,
-} from "../stems/installation.js";
-import { stemJobManager } from "../stems/manager.js";
+import { config } from "../config.js";
 
 const router = Router();
-const execFileAsync = promisify(execFile);
-
 const ENV_PATH = path.resolve(process.cwd(), ".env");
 
 const Body = z.object({
@@ -30,9 +14,6 @@ const Body = z.object({
   }).optional(),
   openaiApiKey: z.string().max(4096).refine((v) => !/[\r\n]/.test(v), {
     message: "openaiApiKey must be a single line",
-  }).optional(),
-  stemStudioRoot: z.string().max(4096).refine((v) => !/[\r\n]/.test(v), {
-    message: "stemStudioRoot must be a single line",
   }).optional(),
 });
 
@@ -64,9 +45,6 @@ function writeEnvFile(values: Record<string, string>) {
     "OPENAI_API_KEY",
     "PROJECT_DIR",
     "PORT",
-    "CLIPPER_STEM_STUDIO_ROOT",
-    "CLIPPER_STEM_STUDIO_PYTHON",
-    "CLIPPER_STEM_STUDIO_CACHE",
     "CLIPPER_STEMS_TIMEOUT_MINUTES",
   ];
   const lines: string[] = [];
@@ -128,95 +106,6 @@ router.get("/fs/check", (req, res) => {
   res.json({ expanded, exists, isDir, canCreate });
 });
 
-/**
- * The browser cannot reveal an absolute directory selected through a folder
- * input. On macOS, use the native chooser instead, then record only a
- * checkout that has Stem Studio's expected package markers. Selecting a folder
- * is an explicit trust decision; nothing from it is launched here.
- */
-router.get("/stem-studio/candidates", (_req, res) => {
-  res.json({ candidates: discoverStemStudioInstallations() });
-});
-
-function stemStudioSaveError(error: unknown): { code?: string; message: string } {
-  if (error instanceof StemStudioConfigError) {
-    return { code: error.code, message: error.message };
-  }
-  return {
-    message: "Clipper could not save the Stem Studio setup. Check the folder and try again.",
-  };
-}
-
-async function saveStemStudioRoot(root: string, res: Response): Promise<void> {
-  try {
-    setStemStudioRoot(root);
-    res.json({ ok: true, status: await stemJobManager.inspectStudio() });
-  } catch (error) {
-    res.status(409).json({ error: stemStudioSaveError(error) });
-  }
-}
-
-router.post("/stem-studio/use-candidate", async (req, res) => {
-  const parsed = z.object({ id: z.string().min(1).max(128) }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Choose a Stem Studio installation to use." });
-    return;
-  }
-  const installation = getDiscoveredStemStudioInstallation(parsed.data.id);
-  if (!installation) {
-    res.status(400).json({
-      error: "That Stem Studio installation is no longer available. Choose its folder again.",
-    });
-    return;
-  }
-  await saveStemStudioRoot(installation.root, res);
-});
-
-router.post("/stem-studio/repair-config", (_req, res) => {
-  try {
-    repairStemStudioConfigArtifact();
-    res.json({ ok: true });
-  } catch {
-    res.status(409).json({
-      error: {
-        message:
-          "Clipper could not safely repair the old Stem Studio setup artifact. Review it in the project folder, then try again.",
-      },
-    });
-  }
-});
-
-router.post("/stem-studio/select-folder", async (_req, res) => {
-  if (process.platform !== "darwin") {
-    res.status(501).json({
-      error: "Choose the official Stem Studio folder in Audio splitting setup.",
-    });
-    return;
-  }
-  try {
-    const { stdout } = await execFileAsync("/usr/bin/osascript", [
-      "-e",
-      'POSIX path of (choose folder with prompt "Select your trusted Stem Studio folder")',
-    ]);
-    const root = path.resolve(stdout.trim());
-    let installation;
-    try {
-      installation = validateStemStudioInstallation(root);
-    } catch {
-      res.status(400).json({ error: stemStudioFolderMessage(root) });
-      return;
-    }
-    await saveStemStudioRoot(installation.root, res);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException & { code?: number }).code;
-    if (code === 1) {
-      res.status(409).json({ error: "Folder selection was cancelled." });
-      return;
-    }
-    res.status(400).json({ error: stemStudioFolderMessage("") });
-  }
-});
-
 router.post("/settings", (req, res) => {
   const parsed = Body.safeParse(req.body);
   if (!parsed.success) {
@@ -243,11 +132,6 @@ router.post("/settings", (req, res) => {
   if (parsed.data.openaiApiKey !== undefined) {
     env.OPENAI_API_KEY = parsed.data.openaiApiKey.trim();
   }
-  if (parsed.data.stemStudioRoot !== undefined) {
-    env.CLIPPER_STEM_STUDIO_ROOT = expandHome(
-      parsed.data.stemStudioRoot.trim()
-    );
-  }
   writeEnvFile(env);
 
   res.json({
@@ -256,7 +140,6 @@ router.post("/settings", (req, res) => {
     current: {
       projectDir: config.projectDir,
       hasOpenAIKey: Boolean(config.openaiApiKey),
-      stemStudioConfigured: config.stemStudioConfigured,
     },
   });
 });

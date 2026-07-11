@@ -412,7 +412,7 @@ function AppInner() {
           <SaveStateIndicator />
           <StemJobsIndicator
             enabled={Boolean(health?.projectDirConfigured)}
-            configured={Boolean(health?.stemStudioConfigured)}
+            configured={true}
           />
           <ActivityPopover openOnMount={openActivityOnMount} />
           <button

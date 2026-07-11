@@ -62,15 +62,14 @@ export interface Character {
 
 export type ExportMode = "clip" | "source" | "bundle";
 
-export type StemQuality = "fast" | "high" | "max";
+export type StemQuality = "fast";
 
-export interface StemStudioStatus {
-  configured: boolean;
+export interface AudioEngineStatus {
   ready: boolean;
-  helperSetupRequired?: boolean;
-  device?: "cpu" | "mps" | "cuda";
+  installing: boolean;
+  pythonAvailable: boolean;
   recommendedQuality?: StemQuality;
-  message?: string;
+  message: string;
 }
 
 export interface StemJobSummary {
@@ -157,7 +156,6 @@ export interface HealthResponse {
   shotlistMd: string;
   shotlistCsv: string;
   hasOpenAIKey: boolean;
-  stemStudioConfigured?: boolean;
   /** False on first run — UI renders the onboarding wizard when false. */
   projectDirConfigured: boolean;
 }
@@ -203,7 +201,6 @@ export async function checkFsPath(p: string): Promise<FsCheckResponse> {
 export async function saveSettings(input: {
   projectDir?: string;
   openaiApiKey?: string;
-  stemStudioRoot?: string;
 }): Promise<{ ok: boolean; note?: string }> {
   return jsonOrThrow(
     await fetch("/api/settings", {
@@ -590,8 +587,8 @@ export async function exportClip(payload: ExportPayload): Promise<ExportResult> 
   );
 }
 
-export async function fetchStemStudioStatus(): Promise<StemStudioStatus> {
-  return jsonOrThrow(await fetch("/api/stem-studio/status"));
+export async function fetchAudioEngineStatus(): Promise<AudioEngineStatus> {
+  return jsonOrThrow(await fetch("/api/audio-engine/status"));
 }
 
 export interface StemSetupJob {
@@ -602,44 +599,12 @@ export interface StemSetupJob {
   updatedAt: number;
 }
 
-export async function finishStemStudioSetup(): Promise<StemSetupJob> {
-  return jsonOrThrow(await fetch("/api/stem-studio/finish-setup", { method: "POST" }));
+export async function installAudioEngine(): Promise<StemSetupJob> {
+  return jsonOrThrow(await fetch("/api/audio-engine/install", { method: "POST" }));
 }
 
-export async function fetchStemStudioSetup(): Promise<StemSetupJob> {
-  return jsonOrThrow(await fetch("/api/stem-studio/setup"));
-}
-
-export async function selectStemStudioFolder(): Promise<void> {
-  await jsonOrThrow(
-    await fetch("/api/stem-studio/select-folder", { method: "POST" })
-  );
-}
-
-export interface StemStudioCandidate {
-  id: string;
-}
-
-export async function discoverStemStudioInstallations(): Promise<{
-  candidates: StemStudioCandidate[];
-}> {
-  return jsonOrThrow(await fetch("/api/stem-studio/candidates"));
-}
-
-export async function useStemStudioInstallation(id: string): Promise<void> {
-  await jsonOrThrow(
-    await fetch("/api/stem-studio/use-candidate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    })
-  );
-}
-
-export async function repairStemStudioConfig(): Promise<void> {
-  await jsonOrThrow(
-    await fetch("/api/stem-studio/repair-config", { method: "POST" })
-  );
+export async function fetchAudioEngineInstall(): Promise<StemSetupJob> {
+  return jsonOrThrow(await fetch("/api/audio-engine/install"));
 }
 
 export async function fetchStemJobs(): Promise<{ items: StemJobSummary[] }> {
