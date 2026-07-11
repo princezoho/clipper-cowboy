@@ -14,6 +14,7 @@ import {
   StemStudioStatus,
   StemStudioCandidate,
   UnknownPerson,
+  ApiError,
   discoverStemStudioInstallations,
   addCharacterRef,
   captionClip,
@@ -29,6 +30,7 @@ import {
   putDraft,
   reexportLibraryItem,
   selectStemStudioFolder,
+  repairStemStudioConfig,
   useStemStudioInstallation,
 } from "../lib/api";
 import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
@@ -145,6 +147,7 @@ export default function EditorOverlay({
   const [stemStudioStatus, setStemStudioStatus] =
     useState<StemStudioStatus | null>(null);
   const [stemStudioLoading, setStemStudioLoading] = useState(true);
+  const [stemSetupRepairRequired, setStemSetupRepairRequired] = useState(false);
   const [showStemSetup, setShowStemSetup] = useState(false);
   const [stemSetupBusy, setStemSetupBusy] = useState(false);
   const [stemSetupError, setStemSetupError] = useState<string | null>(null);
@@ -253,6 +256,9 @@ export default function EditorOverlay({
         );
       }
     } catch (err) {
+      setStemSetupRepairRequired(
+        err instanceof ApiError && err.code === "stem_studio_config_repair_required"
+      );
       setStemSetupError(err instanceof Error ? err.message : String(err));
     } finally {
       setStemSetupBusy(false);
@@ -275,6 +281,9 @@ export default function EditorOverlay({
           );
         }
       } catch (err) {
+        setStemSetupRepairRequired(
+          err instanceof ApiError && err.code === "stem_studio_config_repair_required"
+        );
         setStemSetupError(err instanceof Error ? err.message : String(err));
       } finally {
         setStemSetupBusy(false);
@@ -282,6 +291,22 @@ export default function EditorOverlay({
     },
     [refreshStemStudioStatus]
   );
+
+  const handleRepairStemStudioSetup = useCallback(async () => {
+    setStemSetupBusy(true);
+    setStemSetupError(null);
+    try {
+      await repairStemStudioConfig();
+      setStemSetupRepairRequired(false);
+      setStemSetupError(
+        "Old setup backed up safely. Use the verified Stem Studio installation or choose its folder again."
+      );
+    } catch (err) {
+      setStemSetupError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStemSetupBusy(false);
+    }
+  }, []);
 
   const handleStemSetupCheck = useCallback(async () => {
     setStemSetupBusy(true);
@@ -1065,6 +1090,7 @@ export default function EditorOverlay({
           onCreateStems={setCreateStems}
           onRequestStemSetup={() => {
             setStemSetupError(null);
+            setStemSetupRepairRequired(false);
             setShowStemSetup(true);
           }}
           stemQuality={stemQuality}
@@ -1079,13 +1105,16 @@ export default function EditorOverlay({
           connected={Boolean(stemStudioStatus?.configured)}
           busy={stemSetupBusy}
           error={stemSetupError}
+          repairRequired={stemSetupRepairRequired}
           onChooseFolder={handleStemSetup}
           onUseCandidate={handleUseDiscoveredStemStudio}
+          onRepairConfig={handleRepairStemStudioSetup}
           onCheckAgain={handleStemSetupCheck}
           onNotNow={() => {
             setCreateStems(false);
             setShowStemSetup(false);
             setStemSetupError(null);
+            setStemSetupRepairRequired(false);
           }}
         />
       )}
@@ -1097,16 +1126,20 @@ function AudioSplittingSetupModal({
   connected,
   busy,
   error,
+  repairRequired,
   onChooseFolder,
   onUseCandidate,
+  onRepairConfig,
   onCheckAgain,
   onNotNow,
 }: {
   connected: boolean;
   busy: boolean;
   error: string | null;
+  repairRequired: boolean;
   onChooseFolder: () => void;
   onUseCandidate: (id: string) => void;
+  onRepairConfig: () => void;
   onCheckAgain: () => void;
   onNotNow: () => void;
 }) {
@@ -1131,6 +1164,7 @@ function AudioSplittingSetupModal({
   }, []);
 
   const foundOne = candidates.length === 1 ? candidates[0] : undefined;
+  const noVerifiedCandidate = candidates.length === 0;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div
@@ -1149,12 +1183,17 @@ function AudioSplittingSetupModal({
           <p className="text-xs leading-5 text-ink-500">
             The first time, Stem Studio needs to be installed locally and may download models. This can take a few minutes.
           </p>
-          {!connected && !discovering && !foundOne && (
-            <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-ink-400">
-              <li>Download or clone Stem Studio.</li>
-              <li>Open its folder here.</li>
-              <li>Clipper Cowboy will verify it.</li>
-            </ol>
+          {!connected && !discovering && noVerifiedCandidate && (
+            <>
+              <div className="rounded-md border border-ink-700 bg-ink-800/50 p-3 text-sm text-ink-200">
+                Stem Studio not found on this Mac
+              </div>
+              <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-ink-400">
+                <li>Download or clone Stem Studio.</li>
+                <li>Open its folder here.</li>
+                <li>Clipper Cowboy will verify it.</li>
+              </ol>
+            </>
           )}
           {!connected && foundOne && (
             <div className="rounded-md border border-accent-500/40 bg-accent-500/10 p-3 text-sm text-ink-100">
@@ -1173,6 +1212,15 @@ function AudioSplittingSetupModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
+          {repairRequired && (
+            <button
+              className="mr-auto rounded px-3 py-1.5 text-sm text-amber-200 hover:text-amber-100"
+              onClick={onRepairConfig}
+              disabled={busy}
+            >
+              Repair old setup
+            </button>
+          )}
           <button
             className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100"
             onClick={onNotNow}

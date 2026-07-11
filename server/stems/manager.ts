@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 import { appendActivity } from "../util/activity.js";
+import { validateStemStudioInstallation } from "./installation.js";
 import { StemMcpClient } from "./mcpClient.js";
 import type {
   StemJobSummary,
@@ -205,6 +206,15 @@ export class StemJobManager {
         ready: false,
         message:
           "Stem Studio is not connected. Add its cloned folder in Settings, then restart Clipper Cowboy.",
+      };
+    }
+    try {
+      validateStemStudioInstallation(config.stemStudioRoot ?? "");
+    } catch {
+      return {
+        configured: false,
+        ready: false,
+        message: "Choose the Stem Studio folder—the one containing package.json and an mcp folder.",
       };
     }
     let client: StemMcpClient | null = null;

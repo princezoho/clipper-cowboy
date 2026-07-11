@@ -1,17 +1,23 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { config, setStemStudioRoot } from "../config.js";
+import {
+  config,
+  repairStemStudioConfigArtifact,
+  setStemStudioRoot,
+  StemStudioConfigError,
+} from "../config.js";
 import {
   discoverStemStudioInstallations,
   getDiscoveredStemStudioInstallation,
   stemStudioFolderMessage,
   validateStemStudioInstallation,
 } from "../stems/installation.js";
+import { stemJobManager } from "../stems/manager.js";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
@@ -132,8 +138,26 @@ router.get("/stem-studio/candidates", (_req, res) => {
   res.json({ candidates: discoverStemStudioInstallations() });
 });
 
-router.post("/stem-studio/use-candidate", (req, res) => {
-  const parsed = z.object({ id: z.string().regex(/^candidate-\d+$/) }).safeParse(req.body);
+function stemStudioSaveError(error: unknown): { code?: string; message: string } {
+  if (error instanceof StemStudioConfigError) {
+    return { code: error.code, message: error.message };
+  }
+  return {
+    message: "Clipper could not save the Stem Studio setup. Check the folder and try again.",
+  };
+}
+
+async function saveStemStudioRoot(root: string, res: Response): Promise<void> {
+  try {
+    setStemStudioRoot(root);
+    res.json({ ok: true, status: await stemJobManager.inspectStudio() });
+  } catch (error) {
+    res.status(409).json({ error: stemStudioSaveError(error) });
+  }
+}
+
+router.post("/stem-studio/use-candidate", async (req, res) => {
+  const parsed = z.object({ id: z.string().min(1).max(128) }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Choose a Stem Studio installation to use." });
     return;
@@ -145,8 +169,21 @@ router.post("/stem-studio/use-candidate", (req, res) => {
     });
     return;
   }
-  setStemStudioRoot(installation.root);
-  res.json({ ok: true });
+  await saveStemStudioRoot(installation.root, res);
+});
+
+router.post("/stem-studio/repair-config", (_req, res) => {
+  try {
+    repairStemStudioConfigArtifact();
+    res.json({ ok: true });
+  } catch {
+    res.status(409).json({
+      error: {
+        message:
+          "Clipper could not safely repair the old Stem Studio setup artifact. Review it in the project folder, then try again.",
+      },
+    });
+  }
 });
 
 router.post("/stem-studio/select-folder", async (_req, res) => {
@@ -169,8 +206,7 @@ router.post("/stem-studio/select-folder", async (_req, res) => {
       res.status(400).json({ error: stemStudioFolderMessage(root) });
       return;
     }
-    setStemStudioRoot(installation.root);
-    res.json({ ok: true });
+    await saveStemStudioRoot(installation.root, res);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException & { code?: number }).code;
     if (code === 1) {

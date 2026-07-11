@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
 
 export interface StemStudioInstallation {
@@ -46,7 +47,7 @@ export function stemStudioFolderMessage(selected: string): string {
   } catch {
     // Fall through to the safe, actionable default.
   }
-  return "That folder does not contain a compatible Stem Studio installation. Choose the folder that contains Stem Studio’s package.json and mcp/ folder.";
+  return "Choose the Stem Studio folder—the one containing package.json and an mcp folder.";
 }
 
 function validateSilently(root: string): boolean {
@@ -81,16 +82,21 @@ function discoveredRoots(): string[] {
   return [...roots];
 }
 
+const discoveredCandidates = new Map<string, string>();
+
 export function discoverStemStudioInstallations(): StemStudioCandidate[] {
-  return discoveredRoots().map((_root, index) => ({ id: `candidate-${index}` }));
+  discoveredCandidates.clear();
+  return discoveredRoots().map((root) => {
+    const id = `candidate-${randomUUID()}`;
+    discoveredCandidates.set(id, root);
+    return { id };
+  });
 }
 
 export function getDiscoveredStemStudioInstallation(
   id: string
 ): StemStudioInstallation | undefined {
-  const index = /^candidate-(\d+)$/.exec(id)?.[1];
-  if (index === undefined) return undefined;
-  const root = discoveredRoots()[Number(index)];
+  const root = discoveredCandidates.get(id);
   if (!root) return undefined;
   try {
     return validateStemStudioInstallation(root);

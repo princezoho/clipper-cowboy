@@ -619,6 +619,12 @@ export async function useStemStudioInstallation(id: string): Promise<void> {
   );
 }
 
+export async function repairStemStudioConfig(): Promise<void> {
+  await jsonOrThrow(
+    await fetch("/api/stem-studio/repair-config", { method: "POST" })
+  );
+}
+
 export async function fetchStemJobs(): Promise<{ items: StemJobSummary[] }> {
   return jsonOrThrow(await fetch("/api/stem-jobs"));
 }

@@ -50,6 +50,16 @@ const imageThumbsDir = path.join(internalDir, "image-thumbs");
 const sourceMetaDir = path.join(internalDir, "source-meta");
 const stemStudioConfigPath = path.join(internalDir, "stem-studio.json");
 
+export class StemStudioConfigError extends Error {
+  constructor(
+    message: string,
+    readonly code: "stem_studio_config_repair_required"
+  ) {
+    super(message);
+    this.name = "StemStudioConfigError";
+  }
+}
+
 function optionalAbsoluteEnv(name: string): string | undefined {
   const value = (process.env[name] ?? "").trim();
   return value ? path.resolve(expandHome(value)) : undefined;
@@ -109,7 +119,6 @@ for (const d of [
   imageMetaDir,
   imageThumbsDir,
   sourceMetaDir,
-  stemStudioConfigPath,
 ]) {
   fs.mkdirSync(d, { recursive: true });
 }
@@ -149,15 +158,65 @@ export const config = {
       : 360,
 };
 
+function artifactBackupPath(): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${stemStudioConfigPath}.bad-dir-${stamp}`;
+}
+
+function moveConfigDirectoryToBackup(allowNonEmpty: boolean): void {
+  fs.mkdirSync(internalDir, { recursive: true, mode: 0o700 });
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(stemStudioConfigPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  if (!stat.isDirectory()) {
+    if (stat.isSymbolicLink()) {
+      throw new StemStudioConfigError(
+        "Clipper found an old Stem Studio setup artifact that needs repair before it can connect.",
+        "stem_studio_config_repair_required"
+      );
+    }
+    return;
+  }
+  const entries = fs.readdirSync(stemStudioConfigPath);
+  const onlySafeTemporaryArtifacts = entries.every((entry) =>
+    /^stem-studio\.json\.tmp-\d+-\d+$/.test(entry)
+  );
+  if (entries.length > 0 && !onlySafeTemporaryArtifacts && !allowNonEmpty) {
+    throw new StemStudioConfigError(
+      "Clipper found an old Stem Studio setup artifact. Select Repair old setup to back it up safely, then connect again.",
+      "stem_studio_config_repair_required"
+    );
+  }
+  fs.renameSync(stemStudioConfigPath, artifactBackupPath());
+}
+
+/** Backs up an old directory artifact without deleting its contents. */
+export function repairStemStudioConfigArtifact(): void {
+  moveConfigDirectoryToBackup(true);
+}
+
 /** Persist the user-selected, trusted Stem Studio checkout without modifying .env. */
 export function setStemStudioRoot(root: string): void {
   const resolved = path.resolve(expandHome(root));
+  moveConfigDirectoryToBackup(false);
   const temp = `${stemStudioConfigPath}.tmp-${process.pid}-${Date.now()}`;
-  fs.mkdirSync(internalDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(temp, JSON.stringify({ root: resolved }, null, 2) + "\n", {
-    mode: 0o600,
-  });
-  fs.renameSync(temp, stemStudioConfigPath);
+  try {
+    fs.writeFileSync(temp, JSON.stringify({ root: resolved }, null, 2) + "\n", {
+      mode: 0o600,
+    });
+    fs.renameSync(temp, stemStudioConfigPath);
+  } catch (error) {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      // The original error is more useful; a later save can clean its temp file.
+    }
+    throw error;
+  }
   config.stemStudioRoot = resolved;
   config.stemStudioConfigured = true;
 }
