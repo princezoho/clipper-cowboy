@@ -718,12 +718,13 @@ export interface ReexportPayload {
   characters: MatchedCharacter[];
   scenes: NamedRef[];
   objects: NamedRef[];
+  stems?: { quality: StemQuality };
 }
 
 export async function reexportLibraryItem(
   id: string,
   payload: ReexportPayload
-): Promise<LibraryItem> {
+): Promise<ExportResult> {
   return jsonOrThrow(
     await fetch(`/api/library/${id}/reexport`, {
       method: "POST",

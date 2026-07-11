@@ -169,75 +169,73 @@ export default function ClipMetaForm({
           </div>
         )}
 
-        {!reexportMode && (
-          <div className="w-full rounded-md border border-ink-700 bg-ink-950/40 p-2 md:w-[22rem]">
-            <label
-              className={
-                "flex items-center gap-2 text-sm " +
-                (canCreateStems ? "text-ink-100" : "text-ink-500")
-              }
-            >
-              <input
-                type="checkbox"
-                checked={canCreateStems && createStems}
-                disabled={!canCreateStems}
-                onChange={(event) => onCreateStems(event.target.checked)}
-                className="h-4 w-4 accent-accent-500"
-              />
-              <span>Create audio stems</span>
-            </label>
-            <div className="mt-1 text-[11px] leading-4 text-ink-500">
-              {stemHint}
-            </div>
-
-            {createStems && canCreateStems && (
-              <div className="mt-2">
-                <div
-                  className="grid grid-cols-3 gap-1"
-                  role="radiogroup"
-                  aria-label="Stem quality"
-                >
-                  {STEM_QUALITY_OPTIONS.map((option) => {
-                    const selected = stemQuality === option.value;
-                    const recommended =
-                      stemStudioStatus?.recommendedQuality === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => onStemQuality(option.value)}
-                        title={
-                          option.value === "max"
-                            ? "Best quality. May download another model on first use; model licensing is governed by Stem Studio."
-                            : option.description
-                        }
-                        className={
-                          "rounded border px-2 py-1.5 text-left transition " +
-                          (selected
-                            ? "border-accent-400 bg-accent-500/15 text-ink-100"
-                            : "border-ink-700 bg-ink-900 text-ink-400 hover:bg-ink-800")
-                        }
-                      >
-                        <span className="block text-xs font-medium">
-                          {option.label}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] leading-3 text-ink-500">
-                          {option.description}
-                          {recommended ? " · Recommended" : ""}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1.5 text-[11px] text-emerald-300">
-                  Runs locally in the background. Keep clipping while it works.
-                </div>
-              </div>
-            )}
+        <div className="w-full rounded-md border border-ink-700 bg-ink-950/40 p-2 md:w-[22rem]">
+          <label
+            className={
+              "flex items-center gap-2 text-sm " +
+              (canCreateStems ? "text-ink-100" : "text-ink-500")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={canCreateStems && createStems}
+              disabled={!canCreateStems}
+              onChange={(event) => onCreateStems(event.target.checked)}
+              className="h-4 w-4 accent-accent-500"
+            />
+            <span>Create audio stems</span>
+          </label>
+          <div className="mt-1 text-[11px] leading-4 text-ink-500">
+            {stemHint}
           </div>
-        )}
+
+          {createStems && canCreateStems && (
+            <div className="mt-2">
+              <div
+                className="grid grid-cols-3 gap-1"
+                role="radiogroup"
+                aria-label="Stem quality"
+              >
+                {STEM_QUALITY_OPTIONS.map((option) => {
+                  const selected = stemQuality === option.value;
+                  const recommended =
+                    stemStudioStatus?.recommendedQuality === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => onStemQuality(option.value)}
+                      title={
+                        option.value === "max"
+                          ? "Best quality. May download another model on first use; model licensing is governed by Stem Studio."
+                          : option.description
+                      }
+                      className={
+                        "rounded border px-2 py-1.5 text-left transition " +
+                        (selected
+                          ? "border-accent-400 bg-accent-500/15 text-ink-100"
+                          : "border-ink-700 bg-ink-900 text-ink-400 hover:bg-ink-800")
+                      }
+                    >
+                      <span className="block text-xs font-medium">
+                        {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-3 text-ink-500">
+                        {option.description}
+                        {recommended ? " · Recommended" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-1.5 text-[11px] text-emerald-300">
+                Runs locally in the background. Keep clipping while it works.
+              </div>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={onExport}

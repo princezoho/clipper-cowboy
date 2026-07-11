@@ -12,6 +12,7 @@ import { smartCut } from "../smartcut.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { appendActivity } from "../util/activity.js";
 import { pathToId } from "../util/id.js";
+import { stemJobManager } from "../stems/manager.js";
 
 const router = Router();
 const LIBRARY_ID_RE = /^[a-f0-9]{16}$/;
@@ -279,6 +280,9 @@ router.post("/library/:id/reexport", async (req, res) => {
     objects: z
       .array(z.object({ id: z.string(), name: z.string() }))
       .optional(),
+    stems: z
+      .object({ quality: z.enum(["fast", "high", "max"]) })
+      .optional(),
   });
   const parsed = Schema.safeParse(req.body);
   if (!parsed.success) {
@@ -343,7 +347,26 @@ router.post("/library/:id/reexport", async (req, res) => {
       name: updated.name,
       durationSec: updated.duration,
     });
-    res.json(updated);
+    let stemJob;
+    if (parsed.data.stems) {
+      try {
+        stemJob = stemJobManager.enqueue({
+          clipId: req.params.id,
+          clipName: updated.name,
+          clipPath,
+          quality: parsed.data.stems.quality,
+        });
+      } catch {
+        // The re-export is already valid. A queue failure must not undo it.
+        appendActivity("stems_failed", {
+          clipId: req.params.id,
+          clipName: updated.name,
+          quality: parsed.data.stems.quality,
+          error: "background stem queue could not start",
+        });
+      }
+    }
+    res.json({ ...updated, ...(stemJob ? { stemJob } : {}) });
   } catch (err) {
     try {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);

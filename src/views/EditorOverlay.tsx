@@ -469,6 +469,10 @@ export default function EditorOverlay({
     if (editingClipId) {
       setStatusMsg("Re-exporting clip in place…");
       try {
+        const requestStems =
+          createStems &&
+          stemStudioStatus?.configured === true &&
+          stemStudioStatus.ready;
         const item = await reexportLibraryItem(editingClipId, {
           in: expIn,
           out: expOut,
@@ -478,12 +482,24 @@ export default function EditorOverlay({
           characters,
           scenes,
           objects,
+          ...(requestStems ? { stems: { quality: stemQuality } } : {}),
         });
-        setStatusMsg(`Re-exported ${item.filename} (${item.mode})`);
+        const stemQueued =
+          item.stemJob?.status === "queued" || item.stemJob?.status === "running";
+        const stemError = item.stemJob?.status === "error";
+        setStatusMsg(
+          stemQueued
+            ? `Re-exported ${item.filename} · stems queued`
+            : `Re-exported ${item.filename} (${item.mode})`
+        );
         fireToast({
           kind: "success",
-          title: "Clip re-exported",
-          body: `${item.filename} · ${item.mode}`,
+          title: stemQueued
+            ? "Clip re-exported · stem separation queued"
+            : "Clip re-exported",
+          body: stemQueued
+            ? `${item.filename} · ${stemQuality} quality`
+            : `${item.filename} · ${item.mode}`,
           action: {
             label: "Show in Finder",
             onClick: () => {
@@ -495,6 +511,14 @@ export default function EditorOverlay({
             },
           },
         });
+        if (stemError) {
+          fireToast({
+            kind: "warn",
+            title: "Clip re-exported; stems did not start",
+            body: item.stemJob?.error || "Check the Stem Studio connection.",
+          });
+        }
+        setCreateStems(false);
         await reloadExistingClips();
         onExported();
       } catch (err) {
