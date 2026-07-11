@@ -14,11 +14,13 @@ const project = path.join(temp, "project");
 const home = path.join(temp, "home");
 const fakeRoot = path.join(temp, "stem-studio");
 const fakeEntry = path.join(fakeRoot, "mcp", "dist", "index.js");
+const fakeBin = path.join(temp, "bin");
 const capability = "stem-smoke-capability";
 
 fs.mkdirSync(project, { recursive: true });
 fs.mkdirSync(home, { recursive: true });
-fs.mkdirSync(path.dirname(fakeEntry), { recursive: true });
+fs.mkdirSync(path.join(fakeRoot, "mcp"), { recursive: true });
+fs.mkdirSync(fakeBin, { recursive: true });
 fs.writeFileSync(
   path.join(fakeRoot, "package.json"),
   JSON.stringify({ name: "stem-studio", private: true })
@@ -27,7 +29,27 @@ fs.writeFileSync(
   path.join(fakeRoot, "mcp", "package.json"),
   JSON.stringify({ name: "stem-studio-mcp", type: "module", private: true })
 );
-fs.copyFileSync(path.join(root, "scripts", "fixtures", "fake-stem-mcp.mjs"), fakeEntry);
+fs.copyFileSync(
+  path.join(root, "scripts", "fixtures", "fake-stem-mcp.mjs"),
+  path.join(fakeRoot, "mcp", "fake-entry.mjs")
+);
+const fakeNpm = path.join(fakeBin, "npm");
+fs.writeFileSync(
+  fakeNpm,
+  `#!/bin/sh
+if [ "$1" = "ci" ] || [ "$1" = "install" ]; then
+  mkdir -p node_modules
+  exit 0
+fi
+if [ "$1" = "run" ] && [ "$2" = "build" ]; then
+  mkdir -p dist
+  cp "$STEMSTUDIO_ROOT/mcp/fake-entry.mjs" dist/index.js
+  exit 0
+fi
+exit 1
+`
+);
+fs.chmodSync(fakeNpm, 0o755);
 
 const ffmpeg = require("ffmpeg-static");
 const fixture = path.join(project, "source.mp4");
@@ -87,6 +109,7 @@ const server = spawn(
       CLIPPER_STEM_STUDIO_ROOT: fakeRoot,
       CLIPPER_STEM_STUDIO_PYTHON: "",
       CLIPPER_STEM_STUDIO_CACHE: "",
+      PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
     },
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
@@ -135,6 +158,31 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (!healthy) throw new Error(`Smoke server did not start: ${logs.slice(-500)}`);
+
+  const beforeSetup = await fetch(`http://127.0.0.1:${port}/api/stem-studio/status`, {
+    headers,
+  });
+  const beforeSetupBody = await beforeSetup.json();
+  if (!beforeSetupBody.configured || !beforeSetupBody.helperSetupRequired) {
+    throw new Error("Missing helper build was not reported as finishable setup");
+  }
+  const setupStart = await fetch(`http://127.0.0.1:${port}/api/stem-studio/finish-setup`, {
+    method: "POST",
+    headers,
+  });
+  if (setupStart.status !== 202) throw new Error("Local helper setup was not accepted");
+  let setup;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/stem-studio/setup`, {
+      headers,
+    });
+    setup = await response.json();
+    if (setup.status === "complete" || setup.status === "error") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (setup?.status !== "complete" || !fs.existsSync(fakeEntry)) {
+    throw new Error(`Local helper setup did not complete: ${JSON.stringify(setup)}`);
+  }
 
   const poolResponse = await fetch(`http://127.0.0.1:${port}/api/pool`, { headers });
   const pool = await poolResponse.json();

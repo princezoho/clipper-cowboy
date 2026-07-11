@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { HealthResponse } from "../lib/api";
+import {
+  fetchStemStudioSetup,
+  fetchStemStudioStatus,
+  finishStemStudioSetup,
+  HealthResponse,
+  StemStudioStatus,
+} from "../lib/api";
 
 interface Props {
   current: HealthResponse;
@@ -13,6 +19,33 @@ export default function SettingsModal({ current, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stemStatus, setStemStatus] = useState<StemStudioStatus | null>(null);
+  const [finishingStemSetup, setFinishingStemSetup] = useState(false);
+
+  useEffect(() => {
+    fetchStemStudioStatus().then(setStemStatus).catch(() => setStemStatus(null));
+  }, []);
+
+  async function finishAudioSetup() {
+    setFinishingStemSetup(true);
+    setError(null);
+    try {
+      let job = await finishStemStudioSetup();
+      while (job.status === "queued" || job.status === "running") {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        job = await fetchStemStudioSetup();
+      }
+      if (job.status === "error") throw new Error(job.message);
+      setStemStatus(await fetchStemStudioStatus());
+      setNote("Stem Studio's local helper is ready.");
+    } catch {
+      setError(
+        "Stem Studio setup could not finish. Open Stem Studio to complete its setup, then try again."
+      );
+    } finally {
+      setFinishingStemSetup(false);
+    }
+  }
 
   // Escape closes the modal (matches every other dialog in the app).
   useEffect(() => {
@@ -153,8 +186,10 @@ export default function SettingsModal({ current, onClose }: Props) {
           <Field
             label="Stem Studio installation folder"
             hint={
-              current.stemStudioConfigured
-                ? "Connected. Advanced: replace the Stem Studio folder, then restart."
+              stemStatus?.helperSetupRequired
+                ? "Installation found; local helper needs setup."
+                : current.stemStudioConfigured
+                  ? "Connected. Advanced: replace the Stem Studio folder, then restart."
                 : "Advanced: enter the Stem Studio folder. You can also start setup from Split audio stems when exporting."
             }
           >
@@ -176,6 +211,15 @@ export default function SettingsModal({ current, onClose }: Props) {
             >
               Get Stem Studio
             </a>
+            {stemStatus?.helperSetupRequired && (
+              <button
+                className="mt-2 rounded bg-accent-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+                onClick={finishAudioSetup}
+                disabled={finishingStemSetup}
+              >
+                {finishingStemSetup ? "Finishing audio setup…" : "Finish audio setup"}
+              </button>
+            )}
           </Field>
 
           {error && (

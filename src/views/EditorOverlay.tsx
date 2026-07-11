@@ -25,7 +25,9 @@ import {
   fetchDraft,
   fetchLibrary,
   fetchPoolClips,
+  fetchStemStudioSetup,
   fetchStemStudioStatus,
+  finishStemStudioSetup,
   formatTime,
   putDraft,
   reexportLibraryItem,
@@ -151,6 +153,9 @@ export default function EditorOverlay({
   const [showStemSetup, setShowStemSetup] = useState(false);
   const [stemSetupBusy, setStemSetupBusy] = useState(false);
   const [stemSetupError, setStemSetupError] = useState<string | null>(null);
+  const [stemSetupTechnicalDetails, setStemSetupTechnicalDetails] = useState<string | null>(
+    null
+  );
   const [captioning, setCaptioning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -244,6 +249,7 @@ export default function EditorOverlay({
   const handleStemSetup = useCallback(async () => {
     setStemSetupBusy(true);
     setStemSetupError(null);
+    setStemSetupTechnicalDetails(null);
     try {
       await selectStemStudioFolder();
       const status = await refreshStemStudioStatus();
@@ -269,6 +275,7 @@ export default function EditorOverlay({
     async (id: string) => {
       setStemSetupBusy(true);
       setStemSetupError(null);
+      setStemSetupTechnicalDetails(null);
       try {
         await useStemStudioInstallation(id);
         const status = await refreshStemStudioStatus();
@@ -295,6 +302,7 @@ export default function EditorOverlay({
   const handleRepairStemStudioSetup = useCallback(async () => {
     setStemSetupBusy(true);
     setStemSetupError(null);
+    setStemSetupTechnicalDetails(null);
     try {
       await repairStemStudioConfig();
       setStemSetupRepairRequired(false);
@@ -311,6 +319,7 @@ export default function EditorOverlay({
   const handleStemSetupCheck = useCallback(async () => {
     setStemSetupBusy(true);
     setStemSetupError(null);
+    setStemSetupTechnicalDetails(null);
     try {
       const status = await refreshStemStudioStatus();
       if (status.ready) setShowStemSetup(false);
@@ -320,6 +329,40 @@ export default function EditorOverlay({
             "The splitter still needs its local dependencies. Finish its setup, then try again."
         );
       }
+    } finally {
+      setStemSetupBusy(false);
+    }
+  }, [refreshStemStudioStatus]);
+
+  const handleFinishStemSetup = useCallback(async () => {
+    setStemSetupBusy(true);
+    setStemSetupError(null);
+    setStemSetupTechnicalDetails(null);
+    try {
+      let job = await finishStemStudioSetup();
+      for (let attempt = 0; job.status === "queued" || job.status === "running"; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        job = await fetchStemStudioSetup();
+        if (attempt >= 600) throw new Error("Setup is taking longer than expected. Check again shortly.");
+      }
+      if (job.status === "error") {
+        setStemSetupError(job.message);
+        setStemSetupTechnicalDetails(job.technicalDetails ?? null);
+        return;
+      }
+      const status = await refreshStemStudioStatus();
+      if (status.ready) {
+        setShowStemSetup(false);
+      } else {
+        setStemSetupError(
+          status.message ||
+            "Stem Studio's local helper is ready. Open Stem Studio to complete its first-time audio setup, then check again."
+        );
+      }
+    } catch {
+      setStemSetupError(
+        "Stem Studio setup could not finish. Open Stem Studio to complete its setup, then try again."
+      );
     } finally {
       setStemSetupBusy(false);
     }
@@ -1090,6 +1133,7 @@ export default function EditorOverlay({
           onCreateStems={setCreateStems}
           onRequestStemSetup={() => {
             setStemSetupError(null);
+            setStemSetupTechnicalDetails(null);
             setStemSetupRepairRequired(false);
             setShowStemSetup(true);
           }}
@@ -1103,17 +1147,21 @@ export default function EditorOverlay({
       {showStemSetup && (
         <AudioSplittingSetupModal
           connected={Boolean(stemStudioStatus?.configured)}
+          helperSetupRequired={Boolean(stemStudioStatus?.helperSetupRequired)}
           busy={stemSetupBusy}
           error={stemSetupError}
+          technicalDetails={stemSetupTechnicalDetails}
           repairRequired={stemSetupRepairRequired}
           onChooseFolder={handleStemSetup}
           onUseCandidate={handleUseDiscoveredStemStudio}
           onRepairConfig={handleRepairStemStudioSetup}
           onCheckAgain={handleStemSetupCheck}
+          onFinishSetup={handleFinishStemSetup}
           onNotNow={() => {
             setCreateStems(false);
             setShowStemSetup(false);
             setStemSetupError(null);
+            setStemSetupTechnicalDetails(null);
             setStemSetupRepairRequired(false);
           }}
         />
@@ -1124,23 +1172,29 @@ export default function EditorOverlay({
 
 function AudioSplittingSetupModal({
   connected,
+  helperSetupRequired,
   busy,
   error,
+  technicalDetails,
   repairRequired,
   onChooseFolder,
   onUseCandidate,
   onRepairConfig,
   onCheckAgain,
+  onFinishSetup,
   onNotNow,
 }: {
   connected: boolean;
+  helperSetupRequired: boolean;
   busy: boolean;
   error: string | null;
+  technicalDetails: string | null;
   repairRequired: boolean;
   onChooseFolder: () => void;
   onUseCandidate: (id: string) => void;
   onRepairConfig: () => void;
   onCheckAgain: () => void;
+  onFinishSetup: () => void;
   onNotNow: () => void;
 }) {
   const [candidates, setCandidates] = useState<StemStudioCandidate[]>([]);
@@ -1200,7 +1254,17 @@ function AudioSplittingSetupModal({
               Stem Studio found
             </div>
           )}
-          {connected && (
+          {connected && helperSetupRequired && (
+            <div className="space-y-1 text-xs leading-5 text-ink-300">
+              <p className="font-medium text-ink-100">Stem Studio is ready to finish setup.</p>
+              <p>
+                Clipper Cowboy needs to build Stem Studio’s local helper once. This may install
+                its JavaScript dependencies; audio models are downloaded by Stem Studio when you
+                use them.
+              </p>
+            </div>
+          )}
+          {connected && !helperSetupRequired && (
             <p className="text-xs leading-5 text-ink-500">
               Stem Studio is connected. Finish any first-time setup in Stem Studio, then check again.
             </p>
@@ -1209,6 +1273,12 @@ function AudioSplittingSetupModal({
             <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               {error}
             </div>
+          )}
+          {technicalDetails && (
+            <details className="rounded border border-ink-700 bg-ink-950/40 px-3 py-2 text-xs text-ink-400">
+              <summary className="cursor-pointer text-ink-300">Technical details</summary>
+              <p className="mt-2 break-words">{technicalDetails}</p>
+            </details>
           )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
@@ -1228,7 +1298,15 @@ function AudioSplittingSetupModal({
           >
             Not now
           </button>
-          {connected ? (
+          {connected && helperSetupRequired ? (
+            <button
+              className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+              onClick={onFinishSetup}
+              disabled={busy}
+            >
+              {busy ? "Finishing setup…" : "Finish audio setup"}
+            </button>
+          ) : connected ? (
             <button
               className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
               onClick={onCheckAgain}

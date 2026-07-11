@@ -97,6 +97,12 @@ function safeMessage(error: unknown): string {
   ] as Array<[string | undefined, string]>) {
     if (value) raw = raw.split(value).join(replacement);
   }
+  if (
+    /\b(?:ENOENT|EACCES|EPERM|lstat|stat|realpath)\b/i.test(raw) ||
+    /(?:^|[\s'"])(?:\/|[A-Za-z]:[\\/])/.test(raw)
+  ) {
+    return "Stem Studio could not complete the request. Check its setup and try again.";
+  }
   return raw.replace(/[\r\n]+/g, " ").slice(0, 1000);
 }
 
@@ -209,12 +215,27 @@ export class StemJobManager {
       };
     }
     try {
-      validateStemStudioInstallation(config.stemStudioRoot ?? "");
+      const installation = validateStemStudioInstallation(config.stemStudioRoot ?? "");
+      const entry = path.join(installation.root, "mcp", "dist", "index.js");
+      const entryStat = fs.lstatSync(entry);
+      if (entryStat.isSymbolicLink() || !entryStat.isFile()) {
+        throw new Error("local helper is unavailable");
+      }
     } catch {
+      let installationValid = false;
+      try {
+        validateStemStudioInstallation(config.stemStudioRoot ?? "");
+        installationValid = true;
+      } catch {
+        // The configured installation itself is no longer valid.
+      }
       return {
-        configured: false,
+        configured: installationValid,
         ready: false,
-        message: "Choose the Stem Studio folder—the one containing package.json and an mcp folder.",
+        ...(installationValid ? { helperSetupRequired: true } : {}),
+        message: installationValid
+          ? "Stem Studio is ready to finish setup."
+          : "Choose the Stem Studio folder—the one containing package.json and an mcp folder.",
       };
     }
     let client: StemMcpClient | null = null;
@@ -232,13 +253,14 @@ export class StemJobManager {
         recommendedQuality: recommendedQuality(device),
         message: report.ready
           ? "Stem Studio is ready."
-          : "Stem Studio is connected, but its local Python environment is not ready. Finish setup in Stem Studio first.",
+          : "Stem Studio is connected, but its first-time audio setup is not ready. Finish setup in Stem Studio first.",
       };
     } catch (error) {
       return {
         configured: true,
         ready: false,
-        message: safeMessage(error),
+        message:
+          "Stem Studio is connected, but its first-time audio setup is not ready. Finish setup in Stem Studio, then check again.",
       };
     } finally {
       if (client) await client.close();

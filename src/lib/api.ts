@@ -67,6 +67,7 @@ export type StemQuality = "fast" | "high" | "max";
 export interface StemStudioStatus {
   configured: boolean;
   ready: boolean;
+  helperSetupRequired?: boolean;
   device?: "cpu" | "mps" | "cuda";
   recommendedQuality?: StemQuality;
   message?: string;
@@ -591,6 +592,22 @@ export async function exportClip(payload: ExportPayload): Promise<ExportResult> 
 
 export async function fetchStemStudioStatus(): Promise<StemStudioStatus> {
   return jsonOrThrow(await fetch("/api/stem-studio/status"));
+}
+
+export interface StemSetupJob {
+  status: "queued" | "running" | "complete" | "error";
+  stage?: "dependencies" | "building" | "validating";
+  message: string;
+  technicalDetails?: string;
+  updatedAt: number;
+}
+
+export async function finishStemStudioSetup(): Promise<StemSetupJob> {
+  return jsonOrThrow(await fetch("/api/stem-studio/finish-setup", { method: "POST" }));
+}
+
+export async function fetchStemStudioSetup(): Promise<StemSetupJob> {
+  return jsonOrThrow(await fetch("/api/stem-studio/setup"));
 }
 
 export async function selectStemStudioFolder(): Promise<void> {

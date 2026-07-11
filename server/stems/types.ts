@@ -25,6 +25,7 @@ export interface StemJobSummary {
 export interface StemStudioStatus {
   configured: boolean;
   ready: boolean;
+  helperSetupRequired?: boolean;
   device?: "cpu" | "mps" | "cuda";
   recommendedQuality?: StemQuality;
   message?: string;

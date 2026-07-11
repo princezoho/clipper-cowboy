@@ -4,6 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { stemJobManager } from "../stems/manager.js";
+import { stemSetupManager } from "../stems/setup.js";
 
 const router = Router();
 const Id = z.string().regex(/^[a-f0-9]{16}$/);
@@ -11,6 +12,27 @@ const Options = z.object({ quality: z.enum(["fast", "high", "max"]) });
 
 router.get("/stem-studio/status", async (_req, res) => {
   res.json(await stemJobManager.inspectStudio());
+});
+
+router.get("/stem-studio/setup", (_req, res) => {
+  res.json(
+    stemSetupManager.inspect() ?? {
+      status: "complete",
+      message: "No local helper setup is running.",
+      updatedAt: Date.now(),
+    }
+  );
+});
+
+router.post("/stem-studio/finish-setup", async (_req, res) => {
+  const status = await stemJobManager.inspectStudio();
+  if (!status.configured || !status.helperSetupRequired) {
+    res.status(409).json({
+      error: "Stem Studio's local helper is not awaiting setup. Choose a valid Stem Studio folder first.",
+    });
+    return;
+  }
+  res.status(202).json(stemSetupManager.start());
 });
 
 router.get("/stem-jobs", (_req, res) => {
