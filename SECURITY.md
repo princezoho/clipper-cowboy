@@ -34,9 +34,10 @@
     first-use downloads remain explicit Stem Studio operations.
   - Outputs are validated inside `derived/stems/.jobs/` and renamed into place
     only after the producer stops; existing results are never overwritten.
-  - Cancellation is cooperative first (`cancel_job`) and then closes the MCP
-    bridge. If a modified/broken checkout stops responding, inspect local
-    processes because upstream worker teardown cannot be guaranteed.
+  - Stem job status is observable when Clipper is attached to its UI server.
+    Clipper does not expose a cancellation operation there: it cannot safely
+    guarantee lifecycle ownership of an independently running server. A future
+    cancellation capability must only be added when that ownership is safe.
 
 ## For public release preparation
 

@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem in Clipper Cowboy
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Clipper Cowboy. Do not include `.env` contents,
+        API keys, tokens, personal paths, or private media in this report.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Give a short, clear description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start ...
+        2. Open ...
+        3. Choose ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        Clipper Cowboy version or commit:
+        OS and version:
+        Node version:
+        Browser:
+        Source media format/codec (if relevant):
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Remove `.env` contents, keys, tokens, usernames, absolute paths, and private media before attaching.
+      render: text

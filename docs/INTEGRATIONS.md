@@ -57,10 +57,11 @@ and expected delivery names, then published atomically to the final folder.
 
 Job summaries persist across restarts, but Stem Studio's inner jobs do not.
 Clipper marks previously queued/running jobs `interrupted` after a restart; it
-does not claim they resume. Graceful cancellation first asks Stem Studio to
-cancel its worker, then closes the MCP bridge. A broken upstream protocol can
-prevent cooperative cancellation, so verify the process has stopped if a
-third-party checkout becomes unresponsive.
+does not claim they resume. When Clipper is attached to an independently
+running UI server, it exposes job status but no cancellation operation: it
+cannot safely guarantee ownership of that server's worker lifecycle. Do not
+assume a job can be stopped through Clipper until an explicitly documented,
+lifecycle-safe cancellation design exists.
 
 Optional configuration:
 
