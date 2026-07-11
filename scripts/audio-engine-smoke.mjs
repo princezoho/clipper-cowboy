@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(path.join(root, "package.json"));
+const productionEngine = fs.readFileSync(path.join(root, "server", "audio", "engine.ts"), "utf8");
+const worker = fs.readFileSync(path.join(root, "server", "audio", "stemstudio_worker", "separate.py"), "utf8");
+if (productionEngine.includes('"stub"') || worker.includes('choices=["stub"]')) {
+  throw new Error("Production audio arguments must not select the stub engine.");
+}
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "clipper-audio-smoke-"));
 const project = path.join(temp, "project");
 const fakePython = path.join(temp, "fake-python");
@@ -18,6 +23,7 @@ fs.mkdirSync(project, { recursive: true });
 // without downloading Python packages or models.
 fs.writeFileSync(fakePython, `#!/bin/sh
 if [ "$1" != "-m" ] || [ "$2" != "stemstudio_worker.separate" ]; then exit 64; fi
+case " $* " in *" --engine demucs "*) ;; *) exit 65;; esac
 out=""
 input=""
 while [ "$#" -gt 0 ]; do

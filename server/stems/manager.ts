@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { config } from "../config.js";
-import { ffmpeg } from "../ffmpeg.js";
+import { ffmpeg, probeFile } from "../ffmpeg.js";
 import { appendActivity } from "../util/activity.js";
 import { audioEngineManager } from "../audio/engine.js";
 import type { StemJobSummary, StemQuality, StemStudioStatus } from "./types.js";
@@ -213,6 +213,13 @@ export class StemJobManager {
     const music = files.get("music");
     const effects = files.get("effects");
     if (!dialogue || !music || !effects) throw new Error("audio engine output incomplete");
+    for (const stem of [dialogue, music, effects]) {
+      const probe = await probeFile(stem);
+      const audio = probe.streams.find((stream) => stream.codec_type === "audio");
+      if (!audio || !Number.isFinite(Number(probe.format.duration)) || Number(probe.format.duration) <= 0) {
+        throw new Error("audio engine output is not a valid WAV stem");
+      }
+    }
     const base = safeFolder(path.basename(job.inputPath), job.clipId);
     const write = async (args: string[]) => {
       const result = await ffmpeg(args);

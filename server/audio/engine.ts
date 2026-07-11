@@ -27,6 +27,14 @@ const MAX_OUTPUT_BYTES = 64 * 1024;
 const INSTALL_TIMEOUT_MS = 15 * 60_000;
 const SEPARATION_TIMEOUT_MS = 6 * 60 * 60_000;
 const WORKER_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "stemstudio_worker");
+const UV = "/opt/homebrew/bin/uv";
+const MODEL_READY = path.join(ENGINE_ROOT, "htdemucs-ready");
+const PYTHON_REQUIREMENTS = [
+  "torch==2.5.1",
+  "torchaudio==2.5.1",
+  "demucs==4.0.1",
+  "soundfile==0.13.1",
+];
 
 function pythonInVenv(): string {
   return process.platform === "win32"
@@ -52,18 +60,40 @@ function testPython(): string | undefined {
     : undefined;
 }
 
-function findPython(): string | undefined {
+function systemPython(): { command: string; version: string } | undefined {
   const injected = testPython();
-  if (injected) return injected;
+  if (injected) return { command: injected, version: "test" };
   for (const command of ["python3", "python"]) {
     const result = spawnSync(command, ["--version"], {
       env: safeEnv(),
-      stdio: "ignore",
+      encoding: "utf8",
       timeout: 5_000,
     });
-    if (result.status === 0) return command;
+    const version = `${result.stdout ?? ""}${result.stderr ?? ""}`.match(/Python\s+(\d+\.\d+(?:\.\d+)?)/)?.[1];
+    if (result.status === 0 && version) return { command, version };
   }
   return undefined;
+}
+
+function hasUv(): boolean {
+  return process.platform === "darwin" && fs.existsSync(UV) &&
+    spawnSync(UV, ["--version"], { env: safeEnv(), stdio: "ignore", timeout: 5_000 }).status === 0;
+}
+
+function dependenciesReady(): boolean {
+  return fs.existsSync(pythonInVenv()) &&
+    spawnSync(pythonInVenv(), ["-c", "import torch, demucs, soundfile"], {
+      env: safeEnv(), stdio: "ignore", timeout: 15_000,
+    }).status === 0;
+}
+
+function modelWeightsPresent(): boolean {
+  const checkpoints = path.join(ENGINE_ROOT, "models", "hub", "checkpoints");
+  try {
+    return fs.readdirSync(checkpoints).some((entry) => entry.endsWith(".th") && fs.statSync(path.join(checkpoints, entry)).size > 0);
+  } catch {
+    return false;
+  }
 }
 
 function run(
@@ -71,11 +101,12 @@ function run(
   args: string[],
   timeoutMs: number,
   onSpawn?: (child: ChildProcess) => void,
-  onOutput?: (line: string) => void
+  onOutput?: (line: string) => void,
+  extraEnv?: NodeJS.ProcessEnv
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      env: safeEnv(),
+      env: { ...safeEnv(), ...extraEnv },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -116,25 +147,22 @@ export class AudioEngineManager {
 
   inspect(): AudioEngineStatus {
     const test = testPython();
-    const pythonAvailable = Boolean(findPython());
-    const ready =
-      Boolean(test) ||
-      (fs.existsSync(pythonInVenv()) &&
-        spawnSync(pythonInVenv(), ["-c", "import numpy, scipy, soundfile"], {
-          env: safeEnv(),
-          stdio: "ignore",
-          timeout: 10_000,
-        }).status === 0);
+    const detected = systemPython();
+    const uv = hasUv();
+    const pythonAvailable = Boolean(uv || detected);
+    const ready = Boolean(test) || (dependenciesReady() && fs.existsSync(MODEL_READY) && modelWeightsPresent());
     return {
       ready,
       installing: this.installing,
       pythonAvailable,
       ...(ready ? { recommendedQuality: "fast" as const } : {}),
       message: ready
-        ? "Audio splitting is ready on this Mac."
-        : pythonAvailable
-          ? "Audio splitting needs a one-time local engine download."
-          : "Audio splitting needs Python 3 installed on this Mac.",
+        ? "Audio splitting is ready: Demucs htdemucs runs locally on this Mac."
+        : uv
+          ? "Audio splitting needs a one-time managed Python 3.11 environment and Demucs model download."
+          : detected
+            ? `Audio splitting requires Python 3.10+ (detected ${detected.version}). Install uv, then try setup again.`
+            : "Audio splitting requires Python 3.10+. Install uv, then try setup again.",
     };
   }
 
@@ -172,7 +200,7 @@ export class AudioEngineManager {
       "--outdir",
       outputRoot,
       "--engine",
-      "stub",
+      "demucs",
       "--quality",
       "fast",
       "--cache-dir",
@@ -180,6 +208,7 @@ export class AudioEngineManager {
     ];
     const env = safeEnv();
     env.PYTHONPATH = path.dirname(WORKER_ROOT);
+    env.TORCH_HOME = path.join(ENGINE_ROOT, "models");
     await new Promise<void>((resolve, reject) => {
       const child = spawn(python, args, { env, shell: false, stdio: ["ignore", "pipe", "pipe"] });
       onSpawn(child);
@@ -217,41 +246,59 @@ export class AudioEngineManager {
 
   private async install(): Promise<void> {
     try {
-      const bootstrap = findPython();
-      if (!bootstrap) throw new Error("Python 3 is not available.");
       if (testPython()) {
         this.update({ status: "complete", message: "Audio engine is ready." });
         return;
       }
+      if (!hasUv()) {
+        const detected = systemPython();
+        throw new Error(
+          detected
+            ? `Audio splitting requires Python 3.10+ (detected ${detected.version}). Install uv, then try again.`
+            : "Audio splitting requires Python 3.10+. Install uv, then try again."
+        );
+      }
       fs.mkdirSync(ENGINE_ROOT, { recursive: true, mode: 0o700 });
+      fs.rmSync(MODEL_READY, { force: true });
       this.update({
         status: "running",
         stage: "environment",
         message: "Creating the local audio engine…",
       });
-      await run(bootstrap, ["-m", "venv", VENV_ROOT], INSTALL_TIMEOUT_MS);
+      await run(UV, ["venv", "--python", "3.11", VENV_ROOT], INSTALL_TIMEOUT_MS);
       this.update({
         status: "running",
         stage: "dependencies",
         message: "Downloading the audio engine…",
       });
       await run(
-        pythonInVenv(),
-        ["-m", "pip", "install", "--disable-pip-version-check", "numpy==2.2.6", "scipy==1.15.3", "soundfile==0.13.1"],
+        UV,
+        ["pip", "install", "--python", pythonInVenv(), ...PYTHON_REQUIREMENTS],
         INSTALL_TIMEOUT_MS
       );
       this.update({
         status: "running",
         stage: "validating",
-        message: "Checking the local audio engine…",
+        message: "Downloading and checking the Demucs model…",
       });
-      await run(pythonInVenv(), ["-c", "import numpy, scipy, soundfile"], 30_000);
-      this.update({ status: "complete", stage: undefined, message: "Audio engine is ready." });
-    } catch {
+      const env = safeEnv();
+      env.PYTHONPATH = path.dirname(WORKER_ROOT);
+      env.TORCH_HOME = path.join(ENGINE_ROOT, "models");
+      await run(
+        pythonInVenv(),
+        ["-m", "stemstudio_worker.separate", "--download-model", "--engine", "demucs", "--cache-dir", env.TORCH_HOME],
+        INSTALL_TIMEOUT_MS,
+        undefined,
+        undefined,
+        env
+      );
+      fs.writeFileSync(MODEL_READY, "htdemucs\n", { mode: 0o600 });
+      this.update({ status: "complete", stage: undefined, message: "Demucs audio engine is ready." });
+    } catch (error) {
       this.update({
         status: "error",
         stage: undefined,
-        message: "Audio engine installation could not finish. Check that Python 3 is available, then try again.",
+        message: error instanceof Error ? error.message : "Audio engine installation could not finish.",
       });
     } finally {
       this.installing = false;

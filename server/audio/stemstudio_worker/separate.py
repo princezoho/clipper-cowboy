@@ -1,7 +1,7 @@
-# Derived from Stem Studio's python/stemstudio_worker/separate.py
-# (Apache-2.0), commit fa1bcd092cecca891cb6192d805999165df351e7.
-# Clipper modification: only the vendored deterministic `stub` engine is
-# currently enabled; neural Tiger/MVSEP engines are intentionally not exposed.
+# Derived from Stem Studio's python/stemstudio_worker/separate.py and
+# engine_mvsep.py (Apache-2.0), commit fa1bcd092cecca891cb6192d805999165df351e7.
+# Clipper modification: the production worker exposes only the real,
+# model-backed Demucs path. `engine_stub` is deliberately not importable here.
 from __future__ import annotations
 import argparse
 import json
@@ -10,7 +10,7 @@ import sys
 import traceback
 from typing import Dict
 import numpy as np
-from .engine_stub import EngineStub
+from .engine_demucs import EngineDemucs
 
 STEM_FILES = {"dialogue": "dialogue.wav", "music": "music.wav", "effects": "effects.wav"}
 
@@ -29,9 +29,8 @@ def write_wav(destination: str, audio: np.ndarray, sample_rate: int) -> None:
     import soundfile as sf
     sf.write(destination, audio if audio.ndim == 2 else audio[:, None], sample_rate, subtype="FLOAT")
 
-def run(source: str, outdir: str) -> Dict[str, str]:
+def run(source: str, outdir: str, engine: EngineDemucs) -> Dict[str, str]:
     os.makedirs(outdir, exist_ok=True)
-    engine = EngineStub()
     engine.load(progress("loading"))
     audio, sample_rate = read_wav(source)
     separating = progress("separating")
@@ -50,19 +49,28 @@ def run(source: str, outdir: str) -> Dict[str, str]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="stemstudio_worker.separate")
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--download-model", action="store_true")
     parser.add_argument("--input")
     parser.add_argument("--outdir")
-    parser.add_argument("--engine", default="stub", choices=["stub"])
+    parser.add_argument("--engine", default="demucs", choices=["demucs"])
     parser.add_argument("--quality", default="fast", choices=["fast"])
-    parser.add_argument("--cache-dir")  # retained upstream worker contract
+    parser.add_argument("--cache-dir")
     args = parser.parse_args(argv)
     if args.probe:
-        emit({"device": "cpu", "engines": ["stub"], "quality": ["fast"]})
+        try:
+            emit(EngineDemucs.probe())
+        except Exception as exc:
+            emit({"device": "unavailable", "engines": ["demucs"], "error": str(exc)})
         return 0
-    if not args.input or not args.outdir:
-        parser.error("--input and --outdir are required unless --probe is used")
     try:
-        emit({"event": "done", "outputs": run(args.input, args.outdir)})
+        engine = EngineDemucs(cache_dir=args.cache_dir)
+        if args.download_model:
+            engine.load(progress("loading"))
+            emit({"event": "done", "model": "htdemucs"})
+            return 0
+        if not args.input or not args.outdir:
+            parser.error("--input and --outdir are required unless --probe or --download-model is used")
+        emit({"event": "done", "outputs": run(args.input, args.outdir, engine)})
         return 0
     except Exception as exc:
         emit({"event": "error", "message": str(exc)})

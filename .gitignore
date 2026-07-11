@@ -13,3 +13,7 @@ build/
 *~
 .~lock.*
 .session-screenshots/
+
+# Python bytecode from the managed audio worker
+__pycache__/
+*.pyc

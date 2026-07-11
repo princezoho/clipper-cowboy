@@ -158,16 +158,17 @@ See [`.env.example`](./.env.example) for the documented placeholder template.
 ### Background audio stems
 
 Choose **Split audio stems** on a **Clip** or **Clip + Source** export. The
-first use installs Clipper Cowboy's managed local engine after an explicit
-click; it may download models on first separation. Clipper processes one local
-job at a time and publishes verified outputs under
+first use explicitly creates Clipper Cowboy's managed Python 3.11 environment,
+installs the pinned Demucs engine, and downloads its `htdemucs` model before
+the checkbox is enabled. Clipper processes one local job at a time and
+publishes verified outputs under
 `PROJECT_DIR/derived/stems/`; a stem failure does not invalidate the clip
 export. No hosted key is required for separation, and no keys are passed to the
 audio process.
 
-This release exposes the managed worker's Fast mode. High and Max are withheld
-until their upstream Tiger/MVSEP model-code and licensing boundaries can be
-carried through safely; see the third-party notice.
+This release exposes real, model-backed Demucs Fast mode. High and Max are
+withheld until their upstream Tiger/MVSEP model-code and licensing boundaries
+can be carried through safely; see the third-party notice.
 
 ### Architecture
 

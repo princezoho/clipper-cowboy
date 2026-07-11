@@ -161,11 +161,11 @@ export default function ClipMetaForm({
                 onChange={(event) => {
                   if (event.target.checked) {
                     onCreateStems(true);
-                    if (!audioEngineReady) onRequestStemSetup();
                   } else {
                     onCreateStems(false);
                   }
                 }}
+                disabled={!audioEngineReady || audioEngineLoading}
                 className="h-4 w-4 accent-accent-500"
               />
               <span>Split audio stems</span>
@@ -175,8 +175,17 @@ export default function ClipMetaForm({
                 ? "Checking audio splitting…"
                 : audioEngineReady
                   ? "Dialogue, music, SFX, and married mix."
-                  : "Audio splitting needs a one-time local engine download. It runs on this Mac and may take a few minutes."}
+                  : audioEngineStatus?.message ?? "Audio splitting is not available in this build yet."}
             </div>
+            {!audioEngineLoading && !audioEngineReady && (
+              <button
+                type="button"
+                onClick={onRequestStemSetup}
+                className="mt-2 rounded border border-ink-700 px-2 py-1 text-xs text-ink-200 hover:bg-ink-800"
+              >
+                Set up audio splitting
+              </button>
+            )}
 
             {createStems && (
             <div className="mt-2">

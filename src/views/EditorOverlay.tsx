@@ -1030,6 +1030,7 @@ export default function EditorOverlay({
         <AudioSplittingSetupModal
           busy={stemSetupBusy}
           error={stemSetupError}
+          status={audioEngineStatus?.message}
           onInstall={handleStemSetup}
           onNotNow={() => {
             setCreateStems(false);
@@ -1045,11 +1046,13 @@ export default function EditorOverlay({
 function AudioSplittingSetupModal({
   busy,
   error,
+  status,
   onInstall,
   onNotNow,
 }: {
   busy: boolean;
   error: string | null;
+  status?: string;
   onInstall: () => void;
   onNotNow: () => void;
 }) {
@@ -1057,15 +1060,15 @@ function AudioSplittingSetupModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div className="w-full max-w-md rounded-xl border border-ink-800 bg-ink-900 shadow-xl" role="dialog" aria-modal="true">
         <div className="space-y-3 px-5 py-5">
-          <h2 className="text-base font-semibold">Install audio splitting</h2>
-          <p className="text-sm leading-5 text-ink-300">Audio splitting needs a one-time local engine download. It runs on this Mac and may take a few minutes.</p>
-          <p className="text-xs leading-5 text-ink-500">Models download automatically the first time you split audio.</p>
+          <h2 className="text-base font-semibold">Set up audio splitting</h2>
+          <p className="text-sm leading-5 text-ink-300">{status ?? "Audio splitting is not available in this build yet."}</p>
+          <p className="text-xs leading-5 text-ink-500">Setup creates a Clipper Cowboy-managed Python 3.11 environment, installs the pinned Demucs engine, and downloads its model before enabling exports.</p>
           {error && <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{error}</div>}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
           <button className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100" onClick={onNotNow} disabled={busy}>Not now</button>
           <button className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50" onClick={onInstall} disabled={busy}>
-            {busy ? "Installing…" : "Install audio splitting"}
+            {busy ? "Setting up…" : "Install Demucs model"}
           </button>
         </div>
       </div>
