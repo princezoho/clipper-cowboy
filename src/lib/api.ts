@@ -593,6 +593,12 @@ export async function fetchStemStudioStatus(): Promise<StemStudioStatus> {
   return jsonOrThrow(await fetch("/api/stem-studio/status"));
 }
 
+export async function selectStemStudioFolder(): Promise<void> {
+  await jsonOrThrow(
+    await fetch("/api/stem-studio/select-folder", { method: "POST" })
+  );
+}
+
 export async function fetchStemJobs(): Promise<{ items: StemJobSummary[] }> {
   return jsonOrThrow(await fetch("/api/stem-jobs"));
 }

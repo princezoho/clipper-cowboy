@@ -48,13 +48,28 @@ const durationsPath = path.join(internalDir, "durations.json");
 const imageMetaDir = path.join(internalDir, "image-meta");
 const imageThumbsDir = path.join(internalDir, "image-thumbs");
 const sourceMetaDir = path.join(internalDir, "source-meta");
+const stemStudioConfigPath = path.join(internalDir, "stem-studio.json");
 
 function optionalAbsoluteEnv(name: string): string | undefined {
   const value = (process.env[name] ?? "").trim();
   return value ? path.resolve(expandHome(value)) : undefined;
 }
 
-const stemStudioRoot = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_ROOT");
+function readSavedStemStudioRoot(): string | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(stemStudioConfigPath, "utf8")) as {
+      root?: unknown;
+    };
+    return typeof parsed.root === "string" && parsed.root.trim()
+      ? path.resolve(expandHome(parsed.root.trim()))
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const stemStudioRoot =
+  readSavedStemStudioRoot() || optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_ROOT");
 const explicitStemPython = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_PYTHON");
 const explicitStemCache = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_CACHE");
 const macStemSupportDir = path.join(
@@ -94,6 +109,7 @@ for (const d of [
   imageMetaDir,
   imageThumbsDir,
   sourceMetaDir,
+  stemStudioConfigPath,
 ]) {
   fs.mkdirSync(d, { recursive: true });
 }
@@ -132,6 +148,19 @@ export const config = {
       ? Math.min(rawStemTimeout, 24 * 60)
       : 360,
 };
+
+/** Persist the user-selected, trusted Stem Studio checkout without modifying .env. */
+export function setStemStudioRoot(root: string): void {
+  const resolved = path.resolve(expandHome(root));
+  const temp = `${stemStudioConfigPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.mkdirSync(internalDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(temp, JSON.stringify({ root: resolved }, null, 2) + "\n", {
+    mode: 0o600,
+  });
+  fs.renameSync(temp, stemStudioConfigPath);
+  config.stemStudioRoot = resolved;
+  config.stemStudioConfigured = true;
+}
 
 export const POOL_CACHE_DIR = thumbCacheDir; // legacy alias (still used by some routes)
 export const LIBRARY_META_DIR = clipMetaDir;

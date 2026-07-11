@@ -32,13 +32,14 @@ PROJECT_DIR/derived/stems/scene12/
 
 ## Automatic UI workflow
 
-Build Stem Studio's MCP server, then enter its repository folder in Clipper
-Cowboy **Settings** (or set `CLIPPER_STEM_STUDIO_ROOT`) and restart Clipper.
+For a first use, check **Split audio stems** while exporting. Clipper opens a
+local setup sheet where you choose a trusted Stem Studio checkout in Finder.
 Clipper verifies the selected repository and MCP identity before use. Selecting
 a checkout is a trust decision: its MCP and Python worker execute locally with
-your user account's filesystem permissions.
+your user account's filesystem permissions. Advanced setup remains available in
+**Audio splitting setup** in Settings (or through `CLIPPER_STEM_STUDIO_ROOT`).
 
-For a **Clip** or **Clip + Source** export, check **Create audio stems** and
+For a **Clip** or **Clip + Source** export, check **Split audio stems** and
 choose:
 
 - **Fast** — one TIGER pass; recommended on CPU.

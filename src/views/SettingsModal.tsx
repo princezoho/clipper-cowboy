@@ -151,11 +151,11 @@ export default function SettingsModal({ current, onClose }: Props) {
           </details>
 
           <Field
-            label="Stem Studio folder"
+            label="Audio splitting setup"
             hint={
               current.stemStudioConfigured
-                ? "Connected. Change this only to use a different Stem Studio clone. Restart after saving."
-                : "Optional. Select the cloned wassermanproductions/stem-studio folder to enable background stems on export. No API key is needed."
+                ? "Connected. Advanced: replace the local splitter folder, then restart."
+                : "Advanced: set a local splitter folder. You can also start setup from Split audio stems when exporting."
             }
           >
             <input
@@ -165,7 +165,7 @@ export default function SettingsModal({ current, onClose }: Props) {
               placeholder={
                 current.stemStudioConfigured
                   ? "(connected — leave blank to keep)"
-                  : "/Users/you/Projects/stem-studio"
+                  : "Local splitter folder"
               }
             />
           </Field>

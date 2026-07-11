@@ -1,11 +1,14 @@
 import { Router } from "express";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { promisify } from "node:util";
 import { z } from "zod";
-import { config } from "../config.js";
+import { config, setStemStudioRoot } from "../config.js";
 
 const router = Router();
+const execFileAsync = promisify(execFile);
 
 const ENV_PATH = path.resolve(process.cwd(), ".env");
 
@@ -111,6 +114,54 @@ router.get("/fs/check", (req, res) => {
     }
   }
   res.json({ expanded, exists, isDir, canCreate });
+});
+
+/**
+ * The browser cannot reveal an absolute directory selected through a folder
+ * input. On macOS, use the native chooser instead, then record only a
+ * checkout that has Stem Studio's expected package markers. Selecting a folder
+ * is an explicit trust decision; nothing from it is launched here.
+ */
+router.post("/stem-studio/select-folder", async (_req, res) => {
+  if (process.platform !== "darwin") {
+    res.status(501).json({
+      error: "Choose the official Stem Studio folder in Audio splitting setup.",
+    });
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/osascript", [
+      "-e",
+      'POSIX path of (choose folder with prompt "Select your trusted Stem Studio folder")',
+    ]);
+    const root = path.resolve(stdout.trim());
+    const rootPackage = JSON.parse(
+      fs.readFileSync(path.join(root, "package.json"), "utf8")
+    ) as { name?: string };
+    const mcpPackage = JSON.parse(
+      fs.readFileSync(path.join(root, "mcp", "package.json"), "utf8")
+    ) as { name?: string };
+    if (
+      rootPackage.name !== "stem-studio" ||
+      mcpPackage.name !== "stem-studio-mcp"
+    ) {
+      res.status(400).json({
+        error: "That folder is not an official Stem Studio checkout.",
+      });
+      return;
+    }
+    setStemStudioRoot(root);
+    res.json({ ok: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException & { code?: number }).code;
+    if (code === 1) {
+      res.status(409).json({ error: "Folder selection was cancelled." });
+      return;
+    }
+    res.status(400).json({
+      error: "Could not use that folder for audio splitting.",
+    });
+  }
 });
 
 router.post("/settings", (req, res) => {

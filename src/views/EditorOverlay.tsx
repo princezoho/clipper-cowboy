@@ -26,6 +26,7 @@ import {
   formatTime,
   putDraft,
   reexportLibraryItem,
+  selectStemStudioFolder,
 } from "../lib/api";
 import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
 import Timeline from "../components/Timeline";
@@ -141,6 +142,9 @@ export default function EditorOverlay({
   const [stemStudioStatus, setStemStudioStatus] =
     useState<StemStudioStatus | null>(null);
   const [stemStudioLoading, setStemStudioLoading] = useState(true);
+  const [showStemSetup, setShowStemSetup] = useState(false);
+  const [stemSetupBusy, setStemSetupBusy] = useState(false);
+  const [stemSetupError, setStemSetupError] = useState<string | null>(null);
   const [captioning, setCaptioning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -198,33 +202,76 @@ export default function EditorOverlay({
     reloadExistingClips();
   }, [reloadExistingClips]);
 
+  const refreshStemStudioStatus = useCallback(async () => {
+    setStemStudioLoading(true);
+    try {
+      const status = await fetchStemStudioStatus();
+      setStemStudioStatus(status);
+      if (!initialStemPreference.wasStored && status.recommendedQuality) {
+        setStemQuality(status.recommendedQuality);
+      }
+      return status;
+    } catch {
+      const status = {
+        configured: false,
+        ready: false,
+        message: "Audio splitting is not ready yet.",
+      };
+      setStemStudioStatus(status);
+      return status;
+    } finally {
+      setStemStudioLoading(false);
+    }
+  }, [initialStemPreference.wasStored]);
+
   useEffect(() => {
     let cancelled = false;
-    setStemStudioLoading(true);
-    fetchStemStudioStatus()
-      .then((status) => {
-        if (cancelled) return;
-        setStemStudioStatus(status);
-        if (!initialStemPreference.wasStored && status.recommendedQuality) {
-          setStemQuality(status.recommendedQuality);
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setStemStudioStatus({
-          configured: false,
-          ready: false,
-          message:
-            "Stem Studio is not connected yet. Add its cloned repo folder in Settings.",
-        });
-      })
-      .finally(() => {
-        if (!cancelled) setStemStudioLoading(false);
-      });
+    refreshStemStudioStatus().then((status) => {
+      if (cancelled) return;
+      setStemStudioStatus(status);
+    });
     return () => {
       cancelled = true;
     };
-  }, [initialStemPreference.wasStored]);
+  }, [refreshStemStudioStatus]);
+
+  const handleStemSetup = useCallback(async () => {
+    setStemSetupBusy(true);
+    setStemSetupError(null);
+    try {
+      await selectStemStudioFolder();
+      const status = await refreshStemStudioStatus();
+      if (status.ready) {
+        setShowStemSetup(false);
+      } else {
+        setStemSetupError(
+          status.message ||
+            "The splitter still needs its local dependencies. Finish its setup, then check again."
+        );
+      }
+    } catch (err) {
+      setStemSetupError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStemSetupBusy(false);
+    }
+  }, [refreshStemStudioStatus]);
+
+  const handleStemSetupCheck = useCallback(async () => {
+    setStemSetupBusy(true);
+    setStemSetupError(null);
+    try {
+      const status = await refreshStemStudioStatus();
+      if (status.ready) setShowStemSetup(false);
+      else {
+        setStemSetupError(
+          status.message ||
+            "The splitter still needs its local dependencies. Finish its setup, then try again."
+        );
+      }
+    } finally {
+      setStemSetupBusy(false);
+    }
+  }, [refreshStemStudioStatus]);
 
   useEffect(() => {
     setCreateStems(false);
@@ -451,6 +498,14 @@ export default function EditorOverlay({
   const handleExport = useCallback(async () => {
     if (!name.trim()) {
       setError("Give the clip a name first.");
+      return;
+    }
+    if (
+      createStems &&
+      !(stemStudioStatus?.configured === true && stemStudioStatus.ready)
+    ) {
+      setShowStemSetup(true);
+      setError("Set up audio splitting before exporting with stems.");
       return;
     }
     const { expIn, expOut, dur } = exportRangeSeconds(
@@ -981,12 +1036,106 @@ export default function EditorOverlay({
           }}
           createStems={createStems}
           onCreateStems={setCreateStems}
+          onRequestStemSetup={() => {
+            setStemSetupError(null);
+            setShowStemSetup(true);
+          }}
           stemQuality={stemQuality}
           onStemQuality={handleStemQuality}
           stemStudioStatus={stemStudioStatus}
           stemStudioLoading={stemStudioLoading}
           reexportMode={Boolean(editingClipId)}
         />
+      </div>
+      {showStemSetup && (
+        <AudioSplittingSetupModal
+          connected={Boolean(stemStudioStatus?.configured)}
+          busy={stemSetupBusy}
+          error={stemSetupError}
+          onSetUp={handleStemSetup}
+          onCheckAgain={handleStemSetupCheck}
+          onNotNow={() => {
+            setCreateStems(false);
+            setShowStemSetup(false);
+            setStemSetupError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AudioSplittingSetupModal({
+  connected,
+  busy,
+  error,
+  onSetUp,
+  onCheckAgain,
+  onNotNow,
+}: {
+  connected: boolean;
+  busy: boolean;
+  error: string | null;
+  onSetUp: () => void;
+  onCheckAgain: () => void;
+  onNotNow: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <div
+        className="w-full max-w-md rounded-xl border border-ink-800 bg-ink-900 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audio-splitting-setup-title"
+      >
+        <div className="space-y-3 px-5 py-5">
+          <h2 id="audio-splitting-setup-title" className="text-base font-semibold">
+            Set up audio splitting
+          </h2>
+          <p className="text-sm leading-5 text-ink-300">
+            Audio splitting runs locally. One-time setup installs the local splitter
+            and may download models.
+          </p>
+          <div className="rounded-md border border-ink-800 bg-ink-950/40 p-3 text-xs leading-5 text-ink-400">
+            <p><span className="font-medium text-ink-200">Fast</span> is quickest.</p>
+            <p><span className="font-medium text-ink-200">High</span> is cleaner and takes longer.</p>
+            <p><span className="font-medium text-ink-200">Max</span> uses an extra model; its upstream licensing applies.</p>
+          </div>
+          <p className="text-xs leading-5 text-ink-500">
+            Only select an official copy you trust. It runs locally with your account's permissions.
+          </p>
+          {error && (
+            <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
+          <button
+            className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100"
+            onClick={onNotNow}
+            disabled={busy}
+          >
+            Not now
+          </button>
+          {connected && error ? (
+            <button
+              className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+              onClick={onCheckAgain}
+              disabled={busy}
+            >
+              {busy ? "Checking…" : "Check setup again"}
+            </button>
+          ) : (
+            <button
+              className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+              onClick={onSetUp}
+              disabled={busy}
+            >
+              {busy ? "Setting up…" : "Set up audio splitting"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

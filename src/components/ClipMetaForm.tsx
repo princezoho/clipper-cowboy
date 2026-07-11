@@ -16,6 +16,7 @@ interface Props {
   onExportMode: (m: ExportMode) => void;
   createStems: boolean;
   onCreateStems: (enabled: boolean) => void;
+  onRequestStemSetup: () => void;
   stemQuality: StemQuality;
   onStemQuality: (quality: StemQuality) => void;
   stemStudioStatus: StemStudioStatus | null;
@@ -49,11 +50,11 @@ const STEM_QUALITY_OPTIONS: Array<{
   description: string;
 }> = [
   { value: "fast", label: "Fast", description: "Quick single pass." },
-  { value: "high", label: "High", description: "Multi-pass; cleaner." },
+  { value: "high", label: "High", description: "Cleaner multi-pass." },
   {
     value: "max",
     label: "Max",
-    description: "Dual-model; slowest.",
+    description: "Best detail; extra model license.",
   },
 ];
 
@@ -73,6 +74,7 @@ export default function ClipMetaForm({
   onExportMode,
   createStems,
   onCreateStems,
+  onRequestStemSetup,
   stemQuality,
   onStemQuality,
   stemStudioStatus,
@@ -83,17 +85,6 @@ export default function ClipMetaForm({
   const stemStudioReady = Boolean(
     stemStudioStatus?.configured && stemStudioStatus.ready
   );
-  const canCreateStems =
-    !stemStudioLoading && stemModeSupported && stemStudioReady;
-  const stemHint = stemStudioLoading
-    ? "Checking Stem Studio…"
-    : !stemModeSupported
-      ? "Available for Clip and Clip + Source exports."
-      : !stemStudioStatus?.configured
-        ? "Connect the cloned Stem Studio folder in Settings."
-        : !stemStudioStatus.ready
-          ? stemStudioStatus.message || "Finish Stem Studio setup first."
-          : "Dialogue, Music, SFX, married mix, and multitrack video.";
 
   return (
     <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_auto]">
@@ -169,27 +160,33 @@ export default function ClipMetaForm({
           </div>
         )}
 
-        <div className="w-full rounded-md border border-ink-700 bg-ink-950/40 p-2 md:w-[22rem]">
-          <label
-            className={
-              "flex items-center gap-2 text-sm " +
-              (canCreateStems ? "text-ink-100" : "text-ink-500")
-            }
-          >
-            <input
-              type="checkbox"
-              checked={canCreateStems && createStems}
-              disabled={!canCreateStems}
-              onChange={(event) => onCreateStems(event.target.checked)}
-              className="h-4 w-4 accent-accent-500"
-            />
-            <span>Create audio stems</span>
-          </label>
-          <div className="mt-1 text-[11px] leading-4 text-ink-500">
-            {stemHint}
-          </div>
+        {stemModeSupported && (
+          <div className="w-full rounded-md border border-ink-700 bg-ink-950/40 p-2 md:w-[22rem]">
+            <label className="flex items-center gap-2 text-sm text-ink-100">
+              <input
+                type="checkbox"
+                checked={createStems}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    onCreateStems(true);
+                    if (!stemStudioReady) onRequestStemSetup();
+                  } else {
+                    onCreateStems(false);
+                  }
+                }}
+                className="h-4 w-4 accent-accent-500"
+              />
+              <span>Split audio stems</span>
+            </label>
+            <div className="mt-1 text-[11px] leading-4 text-ink-500">
+              {stemStudioLoading
+                ? "Checking audio splitting…"
+                : stemStudioReady
+                  ? "Dialogue, music, SFX, married mix, and multitrack video."
+                  : "Set up locally the first time you use it."}
+            </div>
 
-          {createStems && canCreateStems && (
+            {createStems && (
             <div className="mt-2">
               <div
                 className="grid grid-cols-3 gap-1"
@@ -209,7 +206,7 @@ export default function ClipMetaForm({
                       onClick={() => onStemQuality(option.value)}
                       title={
                         option.value === "max"
-                          ? "Best quality. May download another model on first use; model licensing is governed by Stem Studio."
+                          ? "Best detail. May download another model; use requires accepting its upstream licensing."
                           : option.description
                       }
                       className={
@@ -231,11 +228,14 @@ export default function ClipMetaForm({
                 })}
               </div>
               <div className="mt-1.5 text-[11px] text-emerald-300">
-                Runs locally in the background. Keep clipping while it works.
+                {stemStudioReady
+                  ? "Runs locally in the background. Keep clipping while it works."
+                  : "Finish setup to queue splitting after export."}
               </div>
             </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={onExport}

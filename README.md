@@ -161,9 +161,10 @@ See [`.env.example`](./.env.example) for the documented placeholder template.
 
 ### Background audio stems
 
-Configure a trusted local Stem Studio checkout in **Settings**, then choose
-**Create audio stems** on a **Clip** or **Clip + Source** export. Clipper
-processes one local job at a time and publishes verified outputs under
+Choose **Split audio stems** on a **Clip** or **Clip + Source** export. The
+first use opens local setup; select a trusted Stem Studio checkout and finish
+its own dependency setup if needed. Clipper processes one local job at a time
+and publishes verified outputs under
 `PROJECT_DIR/derived/stems/`; a stem failure does not invalidate the clip
 export. No hosted key is required for separation, and Clipper does not forward
 its OpenAI key or local API token to Stem Studio.
