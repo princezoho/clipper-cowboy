@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
+import { validateStemStudioInstallation } from "./installation.js";
 
 type Pending = {
   resolve: (value: unknown) => void;
@@ -56,22 +57,12 @@ function resolveStemEntry(): { root: string; entry: string } {
       "Stem Studio is not connected. Set its folder in Settings and restart Clipper Cowboy."
     );
   }
-  const root = fs.realpathSync(config.stemStudioRoot);
-  if (!fs.statSync(root).isDirectory()) {
-    throw new Error("The configured Stem Studio folder is not a directory.");
-  }
-  const rootPackage = JSON.parse(
-    fs.readFileSync(path.join(root, "package.json"), "utf8")
-  ) as { name?: string };
-  const mcpPackage = JSON.parse(
-    fs.readFileSync(path.join(root, "mcp", "package.json"), "utf8")
-  ) as { name?: string };
-  if (
-    rootPackage.name !== "stem-studio" ||
-    mcpPackage.name !== "stem-studio-mcp"
-  ) {
+  let root: string;
+  try {
+    root = validateStemStudioInstallation(config.stemStudioRoot).root;
+  } catch {
     throw new Error(
-      "The configured folder is not an official Stem Studio checkout."
+      "The configured folder does not contain a compatible Stem Studio installation."
     );
   }
   const entry = fs.realpathSync(path.join(root, "mcp", "dist", "index.js"));

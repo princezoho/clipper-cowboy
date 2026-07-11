@@ -12,7 +12,9 @@ import {
   SampleFrame,
   StemQuality,
   StemStudioStatus,
+  StemStudioCandidate,
   UnknownPerson,
+  discoverStemStudioInstallations,
   addCharacterRef,
   captionClip,
   createCharacter,
@@ -27,6 +29,7 @@ import {
   putDraft,
   reexportLibraryItem,
   selectStemStudioFolder,
+  useStemStudioInstallation,
 } from "../lib/api";
 import VideoPlayer, { VideoPlayerHandle } from "../components/VideoPlayer";
 import Timeline from "../components/Timeline";
@@ -255,6 +258,30 @@ export default function EditorOverlay({
       setStemSetupBusy(false);
     }
   }, [refreshStemStudioStatus]);
+
+  const handleUseDiscoveredStemStudio = useCallback(
+    async (id: string) => {
+      setStemSetupBusy(true);
+      setStemSetupError(null);
+      try {
+        await useStemStudioInstallation(id);
+        const status = await refreshStemStudioStatus();
+        if (status.ready) {
+          setShowStemSetup(false);
+        } else {
+          setStemSetupError(
+            status.message ||
+              "Stem Studio was found, but it needs to finish its own first-time setup before it can split audio."
+          );
+        }
+      } catch (err) {
+        setStemSetupError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setStemSetupBusy(false);
+      }
+    },
+    [refreshStemStudioStatus]
+  );
 
   const handleStemSetupCheck = useCallback(async () => {
     setStemSetupBusy(true);
@@ -1052,7 +1079,8 @@ export default function EditorOverlay({
           connected={Boolean(stemStudioStatus?.configured)}
           busy={stemSetupBusy}
           error={stemSetupError}
-          onSetUp={handleStemSetup}
+          onChooseFolder={handleStemSetup}
+          onUseCandidate={handleUseDiscoveredStemStudio}
           onCheckAgain={handleStemSetupCheck}
           onNotNow={() => {
             setCreateStems(false);
@@ -1069,17 +1097,40 @@ function AudioSplittingSetupModal({
   connected,
   busy,
   error,
-  onSetUp,
+  onChooseFolder,
+  onUseCandidate,
   onCheckAgain,
   onNotNow,
 }: {
   connected: boolean;
   busy: boolean;
   error: string | null;
-  onSetUp: () => void;
+  onChooseFolder: () => void;
+  onUseCandidate: (id: string) => void;
   onCheckAgain: () => void;
   onNotNow: () => void;
 }) {
+  const [candidates, setCandidates] = useState<StemStudioCandidate[]>([]);
+  const [discovering, setDiscovering] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    discoverStemStudioInstallations()
+      .then((result) => {
+        if (!cancelled) setCandidates(result.candidates);
+      })
+      .catch(() => {
+        if (!cancelled) setCandidates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscovering(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const foundOne = candidates.length === 1 ? candidates[0] : undefined;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div
@@ -1093,17 +1144,28 @@ function AudioSplittingSetupModal({
             Set up audio splitting
           </h2>
           <p className="text-sm leading-5 text-ink-300">
-            Audio splitting runs locally. One-time setup installs the local splitter
-            and may download models.
+            Clipper Cowboy uses the free Stem Studio app on this Mac to separate dialogue, music, and effects.
           </p>
-          <div className="rounded-md border border-ink-800 bg-ink-950/40 p-3 text-xs leading-5 text-ink-400">
-            <p><span className="font-medium text-ink-200">Fast</span> is quickest.</p>
-            <p><span className="font-medium text-ink-200">High</span> is cleaner and takes longer.</p>
-            <p><span className="font-medium text-ink-200">Max</span> uses an extra model; its upstream licensing applies.</p>
-          </div>
           <p className="text-xs leading-5 text-ink-500">
-            Only select an official copy you trust. It runs locally with your account's permissions.
+            The first time, Stem Studio needs to be installed locally and may download models. This can take a few minutes.
           </p>
+          {!connected && !discovering && !foundOne && (
+            <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-ink-400">
+              <li>Download or clone Stem Studio.</li>
+              <li>Open its folder here.</li>
+              <li>Clipper Cowboy will verify it.</li>
+            </ol>
+          )}
+          {!connected && foundOne && (
+            <div className="rounded-md border border-accent-500/40 bg-accent-500/10 p-3 text-sm text-ink-100">
+              Stem Studio found
+            </div>
+          )}
+          {connected && (
+            <p className="text-xs leading-5 text-ink-500">
+              Stem Studio is connected. Finish any first-time setup in Stem Studio, then check again.
+            </p>
+          )}
           {error && (
             <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               {error}
@@ -1118,7 +1180,7 @@ function AudioSplittingSetupModal({
           >
             Not now
           </button>
-          {connected && error ? (
+          {connected ? (
             <button
               className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
               onClick={onCheckAgain}
@@ -1126,14 +1188,41 @@ function AudioSplittingSetupModal({
             >
               {busy ? "Checking…" : "Check setup again"}
             </button>
+          ) : foundOne ? (
+            <>
+              <button
+                className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100"
+                onClick={onChooseFolder}
+                disabled={busy}
+              >
+                Choose Stem Studio folder…
+              </button>
+              <button
+                className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+                onClick={() => onUseCandidate(foundOne.id)}
+                disabled={busy}
+              >
+                {busy ? "Connecting…" : "Use Stem Studio"}
+              </button>
+            </>
           ) : (
-            <button
-              className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
-              onClick={onSetUp}
-              disabled={busy}
-            >
-              {busy ? "Setting up…" : "Set up audio splitting"}
-            </button>
+            <>
+              <a
+                className="rounded px-3 py-1.5 text-sm text-accent-300 hover:text-accent-200"
+                href="https://github.com/wassermanproductions/stem-studio"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Get Stem Studio
+              </a>
+              <button
+                className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+                onClick={onChooseFolder}
+                disabled={busy || discovering}
+              >
+                {busy ? "Choosing…" : "Choose Stem Studio folder…"}
+              </button>
+            </>
           )}
         </div>
       </div>

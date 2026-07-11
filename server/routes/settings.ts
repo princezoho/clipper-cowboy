@@ -6,6 +6,12 @@ import os from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { config, setStemStudioRoot } from "../config.js";
+import {
+  discoverStemStudioInstallations,
+  getDiscoveredStemStudioInstallation,
+  stemStudioFolderMessage,
+  validateStemStudioInstallation,
+} from "../stems/installation.js";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
@@ -122,6 +128,27 @@ router.get("/fs/check", (req, res) => {
  * checkout that has Stem Studio's expected package markers. Selecting a folder
  * is an explicit trust decision; nothing from it is launched here.
  */
+router.get("/stem-studio/candidates", (_req, res) => {
+  res.json({ candidates: discoverStemStudioInstallations() });
+});
+
+router.post("/stem-studio/use-candidate", (req, res) => {
+  const parsed = z.object({ id: z.string().regex(/^candidate-\d+$/) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a Stem Studio installation to use." });
+    return;
+  }
+  const installation = getDiscoveredStemStudioInstallation(parsed.data.id);
+  if (!installation) {
+    res.status(400).json({
+      error: "That Stem Studio installation is no longer available. Choose its folder again.",
+    });
+    return;
+  }
+  setStemStudioRoot(installation.root);
+  res.json({ ok: true });
+});
+
 router.post("/stem-studio/select-folder", async (_req, res) => {
   if (process.platform !== "darwin") {
     res.status(501).json({
@@ -135,22 +162,14 @@ router.post("/stem-studio/select-folder", async (_req, res) => {
       'POSIX path of (choose folder with prompt "Select your trusted Stem Studio folder")',
     ]);
     const root = path.resolve(stdout.trim());
-    const rootPackage = JSON.parse(
-      fs.readFileSync(path.join(root, "package.json"), "utf8")
-    ) as { name?: string };
-    const mcpPackage = JSON.parse(
-      fs.readFileSync(path.join(root, "mcp", "package.json"), "utf8")
-    ) as { name?: string };
-    if (
-      rootPackage.name !== "stem-studio" ||
-      mcpPackage.name !== "stem-studio-mcp"
-    ) {
-      res.status(400).json({
-        error: "That folder is not an official Stem Studio checkout.",
-      });
+    let installation;
+    try {
+      installation = validateStemStudioInstallation(root);
+    } catch {
+      res.status(400).json({ error: stemStudioFolderMessage(root) });
       return;
     }
-    setStemStudioRoot(root);
+    setStemStudioRoot(installation.root);
     res.json({ ok: true });
   } catch (error) {
     const code = (error as NodeJS.ErrnoException & { code?: number }).code;
@@ -158,9 +177,7 @@ router.post("/stem-studio/select-folder", async (_req, res) => {
       res.status(409).json({ error: "Folder selection was cancelled." });
       return;
     }
-    res.status(400).json({
-      error: "Could not use that folder for audio splitting.",
-    });
+    res.status(400).json({ error: stemStudioFolderMessage("") });
   }
 });
 

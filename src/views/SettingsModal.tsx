@@ -151,11 +151,11 @@ export default function SettingsModal({ current, onClose }: Props) {
           </details>
 
           <Field
-            label="Audio splitting setup"
+            label="Stem Studio installation folder"
             hint={
               current.stemStudioConfigured
-                ? "Connected. Advanced: replace the local splitter folder, then restart."
-                : "Advanced: set a local splitter folder. You can also start setup from Split audio stems when exporting."
+                ? "Connected. Advanced: replace the Stem Studio folder, then restart."
+                : "Advanced: enter the Stem Studio folder. You can also start setup from Split audio stems when exporting."
             }
           >
             <input
@@ -165,9 +165,17 @@ export default function SettingsModal({ current, onClose }: Props) {
               placeholder={
                 current.stemStudioConfigured
                   ? "(connected — leave blank to keep)"
-                  : "Local splitter folder"
+                  : "Stem Studio folder"
               }
             />
+            <a
+              className="block pt-1 text-[11px] text-accent-300 underline hover:text-accent-200"
+              href="https://github.com/wassermanproductions/stem-studio"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get Stem Studio
+            </a>
           </Field>
 
           {error && (

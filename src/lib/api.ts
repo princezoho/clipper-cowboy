@@ -599,6 +599,26 @@ export async function selectStemStudioFolder(): Promise<void> {
   );
 }
 
+export interface StemStudioCandidate {
+  id: string;
+}
+
+export async function discoverStemStudioInstallations(): Promise<{
+  candidates: StemStudioCandidate[];
+}> {
+  return jsonOrThrow(await fetch("/api/stem-studio/candidates"));
+}
+
+export async function useStemStudioInstallation(id: string): Promise<void> {
+  await jsonOrThrow(
+    await fetch("/api/stem-studio/use-candidate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+  );
+}
+
 export async function fetchStemJobs(): Promise<{ items: StemJobSummary[] }> {
   return jsonOrThrow(await fetch("/api/stem-jobs"));
 }
