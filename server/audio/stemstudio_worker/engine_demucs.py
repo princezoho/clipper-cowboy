@@ -22,17 +22,16 @@ def _log(message: str) -> None:
 
 def _device(torch):
     override = os.environ.get("CLIPPER_AUDIO_DEVICE", "").strip().lower()
-    if override in ("cpu", "mps", "cuda"):
+    if override in ("cpu", "cuda"):
         if override == "cuda" and torch.cuda.is_available():
             return torch.device("cuda")
-        if override == "mps" and torch.backends.mps.is_available():
-            return torch.device("mps")
         if override == "cpu":
             return torch.device("cpu")
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
+    # htdemucs hits unsupported large-channel convolution operations on the
+    # PyTorch MPS backend. CPU is slower but reliably completes on Apple
+    # silicon.
     return torch.device("cpu")
 
 

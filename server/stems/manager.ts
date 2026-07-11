@@ -13,6 +13,7 @@ interface StoredJob extends StemJobSummary {
   finalDir: string;
   sourceSize: number;
   sourceMtimeMs: number;
+  diagnostic?: string;
 }
 
 const JOBS_PATH = path.join(config.internalDir, "stem-jobs.json");
@@ -26,7 +27,21 @@ function contained(parent: string, child: string): boolean {
 function safeMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   if (/python 3/i.test(raw)) return "Audio splitting needs Python 3 installed on this Mac.";
+  if (/source audio conversion failed/i.test(raw)) return "This clip does not contain usable audio.";
+  if (/audio engine worker failed/i.test(raw)) return "Audio model could not process this clip.";
+  if (/audio engine output|audio render failed|ffprobe failed/i.test(raw)) return "Could not render separated WAV files.";
   return "Audio splitting could not complete. Check the audio engine and try again.";
+}
+
+function safeDiagnostic(error: unknown): string | undefined {
+  const raw = error instanceof Error ? error.message : String(error);
+  const value = raw
+    .replace(/(?:\/[^\s:'"]+)+/g, "<path>")
+    .replace(/\b(?:sk|rk|pk)_[A-Za-z0-9_-]{12,}\b/g, "<redacted>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return value || undefined;
 }
 
 function readJobs(): StoredJob[] {
@@ -39,7 +54,10 @@ function readJobs(): StoredJob[] {
 }
 
 function publicJob(job: StoredJob): StemJobSummary {
-  const { inputPath: _input, finalDir: _dir, sourceSize: _size, sourceMtimeMs: _mtime, ...result } = job;
+  const {
+    inputPath: _input, finalDir: _dir, sourceSize: _size, sourceMtimeMs: _mtime,
+    diagnostic: _diagnostic, ...result
+  } = job;
   return result;
 }
 
@@ -159,8 +177,11 @@ export class StemJobManager {
       const raw = path.join(stage, "raw");
       fs.mkdirSync(raw, { mode: 0o700 });
       this.current = { id: job.id };
+      this.update(job, { stage: "preparing_audio", percent: 8 });
+      const preparedAudio = path.join(raw, "source.wav");
+      await this.prepareInputAudio(job.inputPath, preparedAudio);
       this.update(job, { stage: "separating", percent: 15 });
-      await audioEngineManager.separate(job.inputPath, raw, job.quality, (process) => {
+      await audioEngineManager.separate(preparedAudio, raw, job.quality, (process) => {
         if (this.current?.id === job.id) this.current.process = process;
       }, (stageName, percent) => {
         this.update(job, { stage: stageName, percent: Math.min(80, 15 + Math.round(percent * 0.65)) });
@@ -186,7 +207,7 @@ export class StemJobManager {
         this.update(job, { status: "cancelled", stage: "cancelled", error: undefined });
       } else {
         const message = safeMessage(error);
-        this.update(job, { status: "error", stage: "failed", error: message });
+        this.update(job, { status: "error", stage: "failed", error: message, diagnostic: safeDiagnostic(error) });
         appendActivity("stems_failed", { jobId: job.id, clipId: job.clipId, quality: job.quality, error: message });
       }
     } finally {
@@ -231,6 +252,21 @@ export class StemJobManager {
     await write(["-i", job.inputPath, "-vn", "-c:a", "pcm_s16le", path.join(stage, `${base}_MARRIED.wav`)]);
   }
 
+  private async prepareInputAudio(input: string, destination: string): Promise<void> {
+    const result = await ffmpeg([
+      "-i", input,
+      "-map", "0:a:0",
+      "-vn",
+      "-ac", "2",
+      "-ar", "44100",
+      "-c:a", "pcm_s16le",
+      destination,
+    ]);
+    if (result.code !== 0 || !fs.existsSync(destination) || fs.statSync(destination).size === 0) {
+      throw new Error("source audio conversion failed");
+    }
+  }
+
   private findRawFiles(root: string): Map<string, string> {
     const result = new Map<string, string>();
     const visit = (dir: string) => {
@@ -247,7 +283,7 @@ export class StemJobManager {
     return result;
   }
 
-  private update(job: StoredJob, patch: Partial<Pick<StoredJob, "status" | "stage" | "percent" | "outputDir" | "error">>): void {
+  private update(job: StoredJob, patch: Partial<Pick<StoredJob, "status" | "stage" | "percent" | "outputDir" | "error" | "diagnostic">>): void {
     Object.assign(job, patch, { updatedAt: Date.now() });
     if ("error" in patch && patch.error === undefined) delete job.error;
     this.persist();

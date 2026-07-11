@@ -36,6 +36,15 @@ const PYTHON_REQUIREMENTS = [
   "soundfile==0.13.1",
 ];
 
+function safeWorkerDiagnostic(message: string): string {
+  return message
+    .replace(/(?:\/[^\s:'"]+)+/g, "<path>")
+    .replace(/\b(?:sk|rk|pk)_[A-Za-z0-9_-]{12,}\b/g, "<redacted>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
 function pythonInVenv(): string {
   return process.platform === "win32"
     ? path.join(VENV_ROOT, "Scripts", "python.exe")
@@ -214,6 +223,7 @@ export class AudioEngineManager {
       onSpawn(child);
       let bytes = 0;
       let buffered = "";
+      let workerError = "";
       const output = (chunk: Buffer) => {
         bytes += chunk.length;
         if (bytes > MAX_OUTPUT_BYTES) child.kill("SIGTERM");
@@ -222,8 +232,9 @@ export class AudioEngineManager {
         buffered = lines.pop() ?? "";
         for (const line of lines) {
           try {
-            const event = JSON.parse(line) as { event?: string; stage?: string; percent?: number };
+            const event = JSON.parse(line) as { event?: string; stage?: string; percent?: number; message?: string };
             if (event.event === "progress" && typeof event.stage === "string" && typeof event.percent === "number") onProgress?.(event.stage, event.percent);
+            if (event.event === "error" && typeof event.message === "string") workerError = safeWorkerDiagnostic(event.message);
           } catch { /* worker diagnostics never reach browser */ }
         }
       };
@@ -235,7 +246,7 @@ export class AudioEngineManager {
         clearTimeout(timer);
         if (bytes > MAX_OUTPUT_BYTES) reject(new Error("The local audio engine produced too much output."));
         else if (code === 0) resolve();
-        else reject(new Error("The local audio engine did not complete."));
+        else reject(new Error(`audio engine worker failed${workerError ? `: ${workerError}` : ""}`));
       });
     });
   }
