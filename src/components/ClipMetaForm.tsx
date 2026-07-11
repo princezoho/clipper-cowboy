@@ -49,7 +49,12 @@ const STEM_QUALITY_OPTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  { value: "fast", label: "Fast", description: "Local dialogue, music, and effects split." },
+  { value: "fast", label: "Fast", description: "Local dialogue, music, and Effects / SFX split." },
+  {
+    value: "high",
+    label: "High",
+    description: "Fine-tuned Demucs model; slower, better separation on difficult mixes.",
+  },
 ];
 
 export default function ClipMetaForm({
@@ -174,7 +179,7 @@ export default function ClipMetaForm({
               {audioEngineLoading
                 ? "Checking audio splitting…"
                 : audioEngineReady
-                  ? "Dialogue, music, SFX, and married mix."
+                  ? "Dialogue, music, Effects / SFX, and married mix. Effects / SFX are best-effort residual effects; music is excluded first."
                   : audioEngineStatus?.message ?? "Audio splitting is not available in this build yet."}
             </div>
             {!audioEngineLoading && !audioEngineReady && (
@@ -220,6 +225,9 @@ export default function ClipMetaForm({
                       </span>
                       <span className="mt-0.5 block text-[10px] leading-3 text-ink-500">
                         {option.description}
+                        {option.value === "high" && !audioEngineStatus?.installedQualities.includes("high")
+                          ? " · Downloads before its first job."
+                          : ""}
                         {recommended ? " · Recommended" : ""}
                       </span>
                     </button>

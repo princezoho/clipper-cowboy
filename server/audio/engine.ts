@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type AudioQuality = "fast";
+export type AudioQuality = "fast" | "high";
 
 export interface AudioEngineStatus {
   ready: boolean;
@@ -12,6 +12,7 @@ export interface AudioEngineStatus {
   pythonAvailable: boolean;
   message: string;
   recommendedQuality?: AudioQuality;
+  installedQualities: AudioQuality[];
 }
 
 export interface AudioInstallJob {
@@ -28,7 +29,10 @@ const INSTALL_TIMEOUT_MS = 15 * 60_000;
 const SEPARATION_TIMEOUT_MS = 6 * 60 * 60_000;
 const WORKER_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "stemstudio_worker");
 const UV = "/opt/homebrew/bin/uv";
-const MODEL_READY = path.join(ENGINE_ROOT, "htdemucs-ready");
+const MODEL_READY: Record<AudioQuality, string> = {
+  fast: path.join(ENGINE_ROOT, "htdemucs-ready"),
+  high: path.join(ENGINE_ROOT, "htdemucs_ft-ready"),
+};
 const PYTHON_REQUIREMENTS = [
   "torch==2.5.1",
   "torchaudio==2.5.1",
@@ -159,14 +163,23 @@ export class AudioEngineManager {
     const detected = systemPython();
     const uv = hasUv();
     const pythonAvailable = Boolean(uv || detected);
-    const ready = Boolean(test) || (dependenciesReady() && fs.existsSync(MODEL_READY) && modelWeightsPresent());
+    const fastInstalled = Boolean(test) || (fs.existsSync(MODEL_READY.fast) && modelWeightsPresent());
+    const highInstalled = fs.existsSync(MODEL_READY.high);
+    const ready = Boolean(test) || (dependenciesReady() && fastInstalled);
+    const installedQualities: AudioQuality[] = [
+      ...(fastInstalled ? ["fast" as const] : []),
+      ...(highInstalled ? ["high" as const] : []),
+    ];
     return {
       ready,
       installing: this.installing,
       pythonAvailable,
+      installedQualities,
       ...(ready ? { recommendedQuality: "fast" as const } : {}),
       message: ready
-        ? "Audio splitting is ready: Demucs htdemucs runs locally on this Mac."
+        ? highInstalled
+          ? "Audio splitting is ready: Fast (htdemucs) and High (htdemucs_ft) run locally on this Mac."
+          : "Audio splitting is ready: Fast (htdemucs) is installed. Choose High to download its fine-tuned model before the first job."
         : uv
           ? "Audio splitting needs a one-time managed Python 3.11 environment and Demucs model download."
           : detected
@@ -200,6 +213,11 @@ export class AudioEngineManager {
   ): Promise<void> {
     const status = this.inspect();
     if (!status.ready) throw new Error(status.message);
+    if (quality === "high" && !status.installedQualities.includes("high")) {
+      onProgress?.("downloading_high_model", 0);
+      await this.downloadModel("high", onSpawn, onProgress);
+      onProgress?.("downloading_high_model", 100);
+    }
     const python = testPython() || pythonInVenv();
     const args = [
       "-m",
@@ -211,7 +229,7 @@ export class AudioEngineManager {
       "--engine",
       "demucs",
       "--quality",
-      "fast",
+      quality,
       "--cache-dir",
       path.join(ENGINE_ROOT, "models"),
     ];
@@ -270,7 +288,7 @@ export class AudioEngineManager {
         );
       }
       fs.mkdirSync(ENGINE_ROOT, { recursive: true, mode: 0o700 });
-      fs.rmSync(MODEL_READY, { force: true });
+      fs.rmSync(MODEL_READY.fast, { force: true });
       this.update({
         status: "running",
         stage: "environment",
@@ -297,14 +315,14 @@ export class AudioEngineManager {
       env.TORCH_HOME = path.join(ENGINE_ROOT, "models");
       await run(
         pythonInVenv(),
-        ["-m", "stemstudio_worker.separate", "--download-model", "--engine", "demucs", "--cache-dir", env.TORCH_HOME],
+        ["-m", "stemstudio_worker.separate", "--download-model", "--engine", "demucs", "--quality", "fast", "--cache-dir", env.TORCH_HOME],
         INSTALL_TIMEOUT_MS,
         undefined,
         undefined,
         env
       );
-      fs.writeFileSync(MODEL_READY, "htdemucs\n", { mode: 0o600 });
-      this.update({ status: "complete", stage: undefined, message: "Demucs audio engine is ready." });
+      fs.writeFileSync(MODEL_READY.fast, "htdemucs\n", { mode: 0o600 });
+      this.update({ status: "complete", stage: undefined, message: "Fast Demucs audio engine is ready. High downloads after you select it." });
     } catch (error) {
       this.update({
         status: "error",
@@ -314,6 +332,38 @@ export class AudioEngineManager {
     } finally {
       this.installing = false;
     }
+  }
+
+  private async downloadModel(
+    quality: AudioQuality,
+    onSpawn: (child: ChildProcess) => void,
+    onProgress?: (stage: string, percent: number) => void
+  ): Promise<void> {
+    const python = testPython() || pythonInVenv();
+    const env = safeEnv();
+    env.PYTHONPATH = path.dirname(WORKER_ROOT);
+    env.TORCH_HOME = path.join(ENGINE_ROOT, "models");
+    await run(
+      python,
+      [
+        "-m", "stemstudio_worker.separate", "--download-model", "--engine", "demucs",
+        "--quality", quality, "--cache-dir", env.TORCH_HOME,
+      ],
+      INSTALL_TIMEOUT_MS,
+      onSpawn,
+      (line) => {
+        try {
+          const event = JSON.parse(line) as { event?: string; percent?: number };
+          if (event.event === "progress" && typeof event.percent === "number") {
+            onProgress?.("downloading_high_model", event.percent);
+          }
+        } catch {
+          // The worker's stdout protocol is JSON lines; diagnostics are not surfaced.
+        }
+      },
+      env
+    );
+    fs.writeFileSync(MODEL_READY[quality], quality === "high" ? "htdemucs_ft\n" : "htdemucs\n", { mode: 0o600 });
   }
 }
 

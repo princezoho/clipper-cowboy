@@ -16,8 +16,9 @@
 
 The worker is packaged under Clipper Cowboy's server source and accepts only
 fixed internal arguments. Production exposes only `demucs` with the pinned
-`demucs==4.0.1` package and official `htdemucs` checkpoint; the checkpoint is
-downloaded only after explicit setup into Clipper's managed cache. The old
+`demucs==4.0.1` package and official `htdemucs` (Fast) and `htdemucs_ft`
+(High) checkpoints. Fast downloads only after explicit setup; High downloads
+only after the user explicitly selects it, into Clipper's managed cache. The old
 frequency-band `engine_stub.py` remains only as unreferenced historical source;
 the production CLI rejects `--engine stub`.
 

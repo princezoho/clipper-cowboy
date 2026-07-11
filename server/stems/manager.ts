@@ -11,6 +11,7 @@ import type { StemJobSummary, StemQuality, StemStudioStatus } from "./types.js";
 interface StoredJob extends StemJobSummary {
   inputPath: string;
   finalDir: string;
+  outputDir?: string;
   sourceSize: number;
   sourceMtimeMs: number;
   diagnostic?: string;
@@ -56,7 +57,7 @@ function readJobs(): StoredJob[] {
 function publicJob(job: StoredJob): StemJobSummary {
   const {
     inputPath: _input, finalDir: _dir, sourceSize: _size, sourceMtimeMs: _mtime,
-    diagnostic: _diagnostic, ...result
+    diagnostic: _diagnostic, outputDir: _outputDir, ...result
   } = job;
   return result;
 }
@@ -98,6 +99,31 @@ export class StemJobManager {
   get(id: string): StemJobSummary | undefined {
     const job = this.jobs.get(id);
     return job && publicJob(job);
+  }
+
+  completedOutputDir(id: string): string | undefined {
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "done" || !job.finalDir) return undefined;
+    try {
+      const root = fs.realpathSync(config.stemsDir);
+      const output = fs.realpathSync(job.finalDir);
+      if (
+        output === root ||
+        !contained(root, output) ||
+        !fs.statSync(output).isDirectory()
+      ) {
+        return undefined;
+      }
+      return output;
+    } catch {
+      return undefined;
+    }
+  }
+
+  hasCompletedJobs(): boolean {
+    return [...this.jobs.values()].some(
+      (job) => job.status === "done" && Boolean(this.completedOutputDir(job.id))
+    );
   }
 
   enqueue(input: { clipId: string; clipName: string; clipPath: string; quality: StemQuality }): StemJobSummary {
@@ -246,9 +272,11 @@ export class StemJobManager {
       const result = await ffmpeg(args);
       if (result.code !== 0) throw new Error("audio render failed");
     };
-    await write(["-i", dialogue, "-vn", "-c:a", "pcm_s16le", path.join(stage, `${base}_DIALOGUE.wav`)]);
-    await write(["-i", music, "-vn", "-c:a", "pcm_s16le", path.join(stage, `${base}_MUSIC.wav`)]);
-    await write(["-i", effects, "-vn", "-c:a", "pcm_s16le", path.join(stage, `${base}_SFX.wav`)]);
+    // Preserve floating-point residual stems. Converting estimated source sums
+    // to 16-bit PCM here could clip peaks and break their mixture consistency.
+    await write(["-i", dialogue, "-vn", "-c:a", "pcm_f32le", path.join(stage, `${base}_DIALOGUE.wav`)]);
+    await write(["-i", music, "-vn", "-c:a", "pcm_f32le", path.join(stage, `${base}_MUSIC.wav`)]);
+    await write(["-i", effects, "-vn", "-c:a", "pcm_f32le", path.join(stage, `${base}_SFX.wav`)]);
     await write(["-i", job.inputPath, "-vn", "-c:a", "pcm_s16le", path.join(stage, `${base}_MARRIED.wav`)]);
   }
 

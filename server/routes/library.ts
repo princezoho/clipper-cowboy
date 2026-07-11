@@ -281,7 +281,7 @@ router.post("/library/:id/reexport", async (req, res) => {
       .array(z.object({ id: z.string(), name: z.string() }))
       .optional(),
     stems: z
-      .object({ quality: z.literal("fast") })
+      .object({ quality: z.enum(["fast", "high"]) })
       .optional(),
   });
   const parsed = Schema.safeParse(req.body);

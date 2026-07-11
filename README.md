@@ -159,16 +159,17 @@ See [`.env.example`](./.env.example) for the documented placeholder template.
 
 Choose **Split audio stems** on a **Clip** or **Clip + Source** export. The
 first use explicitly creates Clipper Cowboy's managed Python 3.11 environment,
-installs the pinned Demucs engine, and downloads its `htdemucs` model before
-the checkbox is enabled. Clipper processes one local job at a time and
+installs the pinned Demucs engine, and downloads the Fast `htdemucs` model
+before the checkbox is enabled. Clipper processes one local job at a time and
 publishes verified outputs under
 `PROJECT_DIR/derived/stems/`; a stem failure does not invalidate the clip
 export. No hosted key is required for separation, and no keys are passed to the
 audio process.
 
-This release exposes real, model-backed Demucs Fast mode. High and Max are
-withheld until their upstream Tiger/MVSEP model-code and licensing boundaries
-can be carried through safely; see the third-party notice.
+Fast uses `htdemucs`. High uses Demucs 4.0.1's fine-tuned `htdemucs_ft` model;
+it is downloaded only after the user selects High for a job, which visibly
+reports that download. Outputs are Dialogue, Music, and Effects / SFX:
+Effects / SFX are best-effort residual effects after music is excluded.
 
 ### Architecture
 

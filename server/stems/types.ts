@@ -1,4 +1,4 @@
-export type StemQuality = "fast";
+export type StemQuality = "fast" | "high";
 
 export type StemJobStatus =
   | "queued"
@@ -16,7 +16,6 @@ export interface StemJobSummary {
   status: StemJobStatus;
   stage?: string;
   percent: number;
-  outputDir?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -27,5 +26,6 @@ export interface StemStudioStatus {
   installing: boolean;
   pythonAvailable: boolean;
   recommendedQuality?: StemQuality;
+  installedQualities: StemQuality[];
   message: string;
 }

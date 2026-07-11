@@ -57,7 +57,7 @@ const STEM_QUALITY_STORAGE_KEY = "cowboy.stemQuality";
 function readStoredStemQuality(): StemQuality | null {
   try {
     const value = window.localStorage.getItem(STEM_QUALITY_STORAGE_KEY);
-    return value === "fast" ? value : null;
+    return value === "fast" || value === "high" ? value : null;
   } catch {
     return null;
   }
@@ -216,6 +216,7 @@ export default function EditorOverlay({
         ready: false,
         installing: false,
         pythonAvailable: false,
+        installedQualities: [],
         message: "Audio splitting is not ready yet.",
       };
       setAudioEngineStatus(status);

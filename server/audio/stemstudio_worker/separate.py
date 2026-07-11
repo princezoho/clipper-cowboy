@@ -29,13 +29,13 @@ def write_wav(destination: str, audio: np.ndarray, sample_rate: int) -> None:
     import soundfile as sf
     sf.write(destination, audio if audio.ndim == 2 else audio[:, None], sample_rate, subtype="FLOAT")
 
-def run(source: str, outdir: str, engine: EngineDemucs) -> Dict[str, str]:
+def run(source: str, outdir: str, engine: EngineDemucs, quality: str) -> Dict[str, str]:
     os.makedirs(outdir, exist_ok=True)
-    engine.load(progress("loading"))
+    engine.load(quality, progress("loading"))
     audio, sample_rate = read_wav(source)
     separating = progress("separating")
     separating("separating", 0.0)
-    stems = engine.separate(audio, sample_rate, separating)
+    stems = engine.separate(audio, sample_rate, quality, separating)
     separating("separating", 100.0)
     outputs: Dict[str, str] = {}
     writing = progress("writing")
@@ -53,7 +53,7 @@ def main(argv=None) -> int:
     parser.add_argument("--input")
     parser.add_argument("--outdir")
     parser.add_argument("--engine", default="demucs", choices=["demucs"])
-    parser.add_argument("--quality", default="fast", choices=["fast"])
+    parser.add_argument("--quality", default="fast", choices=["fast", "high"])
     parser.add_argument("--cache-dir")
     args = parser.parse_args(argv)
     if args.probe:
@@ -65,12 +65,12 @@ def main(argv=None) -> int:
     try:
         engine = EngineDemucs(cache_dir=args.cache_dir)
         if args.download_model:
-            engine.load(progress("loading"))
-            emit({"event": "done", "model": "htdemucs"})
+            engine.load(args.quality, progress("loading"))
+            emit({"event": "done", "model": {"fast": "htdemucs", "high": "htdemucs_ft"}[args.quality]})
             return 0
         if not args.input or not args.outdir:
             parser.error("--input and --outdir are required unless --probe or --download-model is used")
-        emit({"event": "done", "outputs": run(args.input, args.outdir, engine)})
+        emit({"event": "done", "outputs": run(args.input, args.outdir, engine, args.quality)})
         return 0
     except Exception as exc:
         emit({"event": "error", "message": str(exc)})

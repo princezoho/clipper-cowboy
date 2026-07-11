@@ -62,13 +62,14 @@ export interface Character {
 
 export type ExportMode = "clip" | "source" | "bundle";
 
-export type StemQuality = "fast";
+export type StemQuality = "fast" | "high";
 
 export interface AudioEngineStatus {
   ready: boolean;
   installing: boolean;
   pythonAvailable: boolean;
   recommendedQuality?: StemQuality;
+  installedQualities: StemQuality[];
   message: string;
 }
 
@@ -86,7 +87,6 @@ export interface StemJobSummary {
     | "interrupted";
   stage?: string;
   percent: number;
-  outputDir?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -617,6 +617,18 @@ export async function cancelStemJob(id: string): Promise<StemJobSummary> {
       method: "POST",
     })
   );
+}
+
+export async function revealStemJob(id: string): Promise<{ ok: true }> {
+  return jsonOrThrow(
+    await fetch(`/api/stem-jobs/${encodeURIComponent(id)}/reveal`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function revealStemsRoot(): Promise<{ ok: true }> {
+  return jsonOrThrow(await fetch("/api/stem-jobs/reveal-root", { method: "POST" }));
 }
 
 export interface ExistingPoolClip {

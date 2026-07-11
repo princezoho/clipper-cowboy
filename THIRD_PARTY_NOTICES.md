@@ -24,7 +24,9 @@ source list are in `server/audio/stemstudio_worker/SOURCE_PROVENANCE.md`.
 
 Stem Studio identifies TIGER-DnR weights as Apache-2.0 and Demucs as MIT.
 Clipper Cowboy uses the MIT-licensed `demucs==4.0.1` package and its official
-`htdemucs` checkpoint, downloaded only after the user starts managed setup.
+`htdemucs` and fine-tuned `htdemucs_ft` checkpoints. Fast (`htdemucs`) is
+downloaded after managed setup; High (`htdemucs_ft`) is downloaded only after
+the user explicitly selects it.
 Its Max tier may use MVSEP-CDX23 weights, whose upstream notice says they are
 for personal use. Clipper Cowboy does not bundle, download, or expose the
 upstream Tiger/MVSEP engines or Max tier in this release. See Stem Studio's

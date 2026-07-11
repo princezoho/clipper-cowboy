@@ -81,7 +81,16 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (job?.status !== "done") throw new Error(`Audio job failed: ${job?.error ?? "unknown"}`);
-  const entries = fs.readdirSync(job.outputDir);
+  // Completion responses intentionally do not expose filesystem paths. The
+  // smoke fixture's fixed local project lets this test inspect the fixed,
+  // validated stems destination directly.
+  const outputDir = path.join(
+    project,
+    "derived",
+    "stems",
+    path.basename(exported.path, path.extname(exported.path))
+  );
+  const entries = fs.readdirSync(outputDir);
   for (const suffix of ["_DIALOGUE.wav", "_MUSIC.wav", "_SFX.wav", "_MARRIED.wav"]) {
     if (!entries.some((entry) => entry.endsWith(suffix))) throw new Error(`Missing ${suffix}`);
   }

@@ -22,7 +22,7 @@
     "stop": "bash scripts/desktop-stop.sh",
     "doctor": "node scripts/doctor.mjs",
     "security:smoke": "node scripts/security-smoke.mjs",
-    "audio:smoke": "node scripts/audio-engine-smoke.mjs",
+    "audio:smoke": "python3 scripts/test-demucs-mapping.py && node scripts/audio-engine-smoke.mjs",
     "mcp:setup": "npm --prefix mcp install && npm run mcp:build",
     "mcp:build": "npm --prefix mcp run build",
     "mcp:typecheck": "npm --prefix mcp run typecheck",

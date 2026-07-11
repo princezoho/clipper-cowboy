@@ -3,6 +3,8 @@ import {
   StemJobSummary,
   cancelStemJob,
   fetchStemJobs,
+  revealStemJob,
+  revealStemsRoot,
 } from "../lib/api";
 import { fireToast } from "../lib/toast";
 
@@ -17,14 +19,33 @@ function statusTone(status: StemJobSummary["status"]): string {
   return "text-amber-300";
 }
 
-function reveal(path: string): void {
-  fetch("/api/reveal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  }).catch(() => {
-    // best-effort Finder action
-  });
+const stemsActionLabel =
+  typeof navigator !== "undefined" && /mac/i.test(navigator.platform)
+    ? "Show stems in Finder"
+    : "Open stems folder";
+
+async function revealJob(id: string): Promise<void> {
+  try {
+    await revealStemJob(id);
+  } catch {
+    fireToast({
+      kind: "error",
+      title: "Could not open stems folder",
+      body: "It may have been moved or is no longer available.",
+    });
+  }
+}
+
+async function revealRoot(): Promise<void> {
+  try {
+    await revealStemsRoot();
+  } catch {
+    fireToast({
+      kind: "error",
+      title: "Could not open Audio Stems folder",
+      body: "Try completing another audio split, then try again.",
+    });
+  }
 }
 
 export default function StemJobsIndicator({
@@ -59,14 +80,10 @@ export default function StemJobsIndicator({
                 kind: "success",
                 title: "Audio splitting is ready",
                 body: `${job.clipName} · ${job.quality} quality`,
-                ...(job.outputDir
-                  ? {
-                      action: {
-                        label: "Show in Finder",
-                        onClick: () => reveal(job.outputDir!),
-                      },
-                    }
-                  : {}),
+                action: {
+                  label: stemsActionLabel,
+                  onClick: () => void revealJob(job.id),
+                },
               });
             }
             if (
@@ -121,6 +138,7 @@ export default function StemJobsIndicator({
   const running = jobs.filter((job) => job.status === "running").length;
   const queued = jobs.filter((job) => job.status === "queued").length;
   const active = running + queued;
+  const hasCompleted = jobs.some((job) => job.status === "done");
 
   async function cancel(job: StemJobSummary): Promise<void> {
     setCancelling(job.id);
@@ -129,11 +147,11 @@ export default function StemJobsIndicator({
       setJobs((current) =>
         current.map((item) => (item.id === updated.id ? updated : item))
       );
-    } catch (error) {
+    } catch {
       fireToast({
         kind: "error",
         title: "Could not cancel stem job",
-        body: String(error),
+        body: "Try again in a moment.",
       });
     } finally {
       setCancelling(null);
@@ -164,8 +182,19 @@ export default function StemJobsIndicator({
       {open && (
         <div className="absolute right-0 top-full z-40 mt-2 w-[24rem] overflow-hidden rounded-lg border border-ink-700 bg-ink-900 shadow-xl shadow-black/50">
           <div className="border-b border-ink-800 px-3 py-2">
-            <div className="text-sm font-medium text-ink-100">
-              Background audio splitting
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-ink-100">
+                Background audio splitting
+              </div>
+              {hasCompleted && (
+                <button
+                  type="button"
+                  onClick={() => void revealRoot()}
+                  className="shrink-0 text-[10px] text-accent-300 hover:underline"
+                >
+                  {stemsActionLabel}
+                </button>
+              )}
             </div>
             <div className="mt-0.5 text-[11px] text-ink-500">
               One local separation runs at a time, so editing stays responsive.
@@ -174,7 +203,7 @@ export default function StemJobsIndicator({
           <div className="max-h-80 overflow-y-auto">
             {jobs.length === 0 ? (
               <div className="px-3 py-6 text-center text-xs text-ink-500">
-                No audio splitting jobs yet.
+                Audio stems appear here after a split completes.
               </div>
             ) : (
               jobs.slice(0, 10).map((job) => (
@@ -210,14 +239,19 @@ export default function StemJobsIndicator({
                       {job.error}
                     </div>
                   )}
+                  {job.status === "done" && (
+                    <div className="mt-1 text-[10px] text-ink-500">
+                      Saved in this project&apos;s Audio Stems folder.
+                    </div>
+                  )}
                   <div className="mt-1 flex justify-end gap-2">
-                    {job.status === "done" && job.outputDir && (
+                    {job.status === "done" && (
                       <button
                         type="button"
-                        onClick={() => reveal(job.outputDir!)}
+                        onClick={() => void revealJob(job.id)}
                         className="text-[10px] text-accent-300 hover:underline"
                       >
-                        Show in Finder
+                        {stemsActionLabel}
                       </button>
                     )}
                     {isActive(job) && (
