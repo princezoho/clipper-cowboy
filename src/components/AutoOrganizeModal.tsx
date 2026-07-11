@@ -6,6 +6,7 @@ import {
   movePoolSources,
 } from "../lib/api";
 import { fireToast } from "../lib/toast";
+import { showOpenAIQuotaToast, userFacingOpenAIError } from "../lib/openaiUx";
 
 /*
  * Auto-organize wizard. 3 stages:
@@ -87,11 +88,14 @@ export default function AutoOrganizeModal({
       setRows(initial);
       setStage("review");
     } catch (err) {
-      fireToast({
-        kind: "error",
-        title: "Auto-organize failed",
-        body: err instanceof Error ? err.message : String(err),
-      });
+      const quotaError = showOpenAIQuotaToast(err);
+      if (!quotaError) {
+        fireToast({
+          kind: "error",
+          title: "Auto-organize failed",
+          body: userFacingOpenAIError(err),
+        });
+      }
       onClose();
     }
   }

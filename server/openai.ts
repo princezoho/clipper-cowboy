@@ -1,8 +1,75 @@
 import OpenAI from "openai";
+import type { Response } from "express";
 import fs from "node:fs";
 import { config, SUPPRESSED_TAGS } from "./config.js";
 
 let client: OpenAI | null = null;
+
+export const OPENAI_BILLING_URL =
+  "https://platform.openai.com/settings/organization/billing/overview";
+
+export interface OpenAIClientError {
+  code: "openai_quota" | "openai_rate_limit";
+  message: string;
+  billingUrl?: string;
+}
+
+function errorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const status = (err as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
+}
+
+function errorText(err: unknown): string {
+  if (!err || typeof err !== "object") return String(err ?? "").toLowerCase();
+  const value = err as {
+    code?: unknown;
+    message?: unknown;
+    error?: { code?: unknown; message?: unknown };
+  };
+  return [
+    value.code,
+    value.message,
+    value.error?.code,
+    value.error?.message,
+  ]
+    .filter((part) => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * Convert only known OpenAI 429s into client-safe copy. Other failures retain
+ * the existing route-level behavior so unrelated errors remain unchanged.
+ */
+export function getOpenAIClientError(err: unknown): OpenAIClientError | null {
+  if (errorStatus(err) !== 429) return null;
+
+  const text = errorText(err);
+  if (
+    text.includes("insufficient_quota") ||
+    /\bquota\b|\bbilling\b|exceeded your current quota/.test(text)
+  ) {
+    return {
+      code: "openai_quota",
+      message: "OpenAI API credits are unavailable for this key.",
+      billingUrl: OPENAI_BILLING_URL,
+    };
+  }
+
+  return {
+    code: "openai_rate_limit",
+    message: "OpenAI is rate limiting requests. Please wait a moment and retry.",
+  };
+}
+
+/** Sends a safe response for an OpenAI 429 and reports whether it handled it. */
+export function sendOpenAIClientError(res: Response, err: unknown): boolean {
+  const error = getOpenAIClientError(err);
+  if (!error) return false;
+  res.status(429).json({ error });
+  return true;
+}
 
 export function getOpenAI(): OpenAI {
   if (!config.openaiApiKey) {

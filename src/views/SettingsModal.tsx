@@ -118,6 +118,37 @@ export default function SettingsModal({ current, onClose }: Props) {
               placeholder={current.hasOpenAIKey ? "(unchanged)" : "sk-..."}
             />
           </Field>
+          <details className="rounded-md border border-ink-800 bg-ink-950/40 px-3 py-2 text-xs text-ink-300">
+            <summary className="cursor-pointer font-medium text-ink-200">
+              Which OpenAI account do I need?
+            </summary>
+            <div className="mt-2 space-y-1.5 leading-5 text-ink-400">
+              <p>Uses the OpenAI API Platform, not a ChatGPT subscription.</p>
+              <p>
+                Create or manage an API key:{" "}
+                <a
+                  className="text-accent-300 underline hover:text-accent-200"
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  platform.openai.com/api-keys
+                </a>
+              </p>
+              <p>
+                Add credits or billing:{" "}
+                <a
+                  className="text-accent-300 underline hover:text-accent-200"
+                  href="https://platform.openai.com/settings/organization/billing/overview"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  OpenAI Platform billing
+                </a>
+              </p>
+              <p>You can skip this; clipping and cataloging work without AI.</p>
+            </div>
+          </details>
 
           <Field
             label="Stem Studio folder"

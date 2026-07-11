@@ -161,6 +161,31 @@ export interface HealthResponse {
   projectDirConfigured: boolean;
 }
 
+export interface ApiErrorShape {
+  code?: string;
+  message?: string;
+  billingUrl?: string;
+}
+
+export class ApiError extends Error {
+  readonly code?: string;
+  readonly billingUrl?: string;
+
+  constructor(message: string, shape?: ApiErrorShape) {
+    super(message);
+    this.name = "ApiError";
+    this.code = shape?.code;
+    this.billingUrl = shape?.billingUrl;
+  }
+}
+
+export const OPENAI_BILLING_URL =
+  "https://platform.openai.com/settings/organization/billing/overview";
+
+export function isOpenAIQuotaError(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.code === "openai_quota";
+}
+
 export interface FsCheckResponse {
   expanded: string;
   exists: boolean;
@@ -191,15 +216,24 @@ export async function saveSettings(input: {
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
+    let apiError: ApiErrorShape | undefined;
     try {
       const body = await res.json();
       if (body?.error) {
-        msg = typeof body.error === "string" ? body.error : JSON.stringify(body.error);
+        if (typeof body.error === "string") {
+          msg = body.error;
+        } else if (typeof body.error === "object") {
+          apiError = body.error as ApiErrorShape;
+          msg =
+            typeof apiError.message === "string"
+              ? apiError.message
+              : JSON.stringify(body.error);
+        }
       }
     } catch {
       // ignore
     }
-    throw new Error(msg);
+    throw new ApiError(msg, apiError);
   }
   return (await res.json()) as T;
 }

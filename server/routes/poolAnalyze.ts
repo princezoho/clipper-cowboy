@@ -18,6 +18,7 @@ import {
 } from "../util/sourceMeta.js";
 import { analyzeSource } from "../ai/poolAnalyze.js";
 import { appendActivity } from "../util/activity.js";
+import { getOpenAIClientError, sendOpenAIClientError } from "../openai.js";
 
 /*
  * Routes that drive AI-powered source-level tagging:
@@ -161,6 +162,7 @@ router.post("/pool/:id/analyze", async (req, res) => {
     const meta = await runAnalyzeOne(req.params.id, force);
     res.json(meta);
   } catch (err) {
+    if (sendOpenAIClientError(res, err)) return;
     res.status(500).json({ error: String(err) });
   }
 });
@@ -285,7 +287,8 @@ router.post("/pool/analyze-batch", (req, res) => {
         await runAnalyzeOne(id, force);
         job.items.push({ id, ok: true });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const openAIError = getOpenAIClientError(err);
+        const msg = openAIError?.message ?? (err instanceof Error ? err.message : String(err));
         job.errors.push({ id, error: msg });
         job.items.push({ id, ok: false });
       } finally {

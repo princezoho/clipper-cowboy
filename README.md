@@ -4,10 +4,12 @@
 
 # Clipper Cowboy
 
-> Turn AI video montages into a searchable, NLE-ready clip library — locally.
+> Build a living shot library for your characters, worlds, and stories.
 
-Clipper Cowboy is a local-first app for reviewing generated video, exporting
-precise clips, cataloging the keepers, and optionally using AI to label them.
+When you are building an IP, good moments cannot disappear into a pile of raw
+generations. Clipper Cowboy turns those montages into a local, searchable
+library of ready-to-use shots—organized around the characters, scenes, objects,
+and visual language you are building.
 
 <p align="center">
   <img src="./docs/screenshots/landing-pool.png" alt="Clipper Cowboy's Pool view for reviewing video montages" width="90%" />
@@ -15,7 +17,7 @@ precise clips, cataloging the keepers, and optionally using AI to label them.
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#built-for-humans-and-agents">MCP + Stem Studio</a> ·
+  <a href="#how-it-fits-into-your-production">Production workflow</a> ·
   <a href="#privacy-and-security">Privacy</a> ·
   <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
@@ -24,41 +26,47 @@ precise clips, cataloging the keepers, and optionally using AI to label them.
 | --- | --- | --- |
 | ![Pool view showing sources ready for review](./docs/screenshots/landing-pool.png) | ![Editor view with clip range and metadata controls](./docs/screenshots/editor-clip-range.png) | ![Settings view showing local security controls](./docs/screenshots/settings-security.png) |
 
-## Why Clipper Cowboy
+## Build an IP, not another pile of files
 
-- **Find the keepers faster.** Review long AI montages visually, track what you
-  have already clipped, and return to saved drafts.
-- **Hand off clean media.** Mark exact in/out points and export organized clips
-  for your NLE, collaborators, or downstream tools.
-- **Keep control of the work.** Your footage, catalog, and optional credentials
-  stay on your machine.
+- **Keep your cast and world available.** Tag clips with recurring characters,
+  scenes, objects, and descriptive tags so a specific hero, saloon, prop, or
+  background is always findable when you need another shot.
+- **Turn generations into usable coverage.** Review long montage videos, carve
+  out the seconds that work, and save them as named clips instead of trying to
+  remember which source file held the good take.
+- **Stay ready to make the next edit.** Search, filter, preview, and export a
+  collection of matching shots for Premiere or another NLE—without rebuilding
+  the same selects every time.
 
-## What it does
+## What Clipper Cowboy does
 
-### Review
-- Scan a project folder of source montages and review shots in a focused Pool.
-- Set frame-accurate in/out points, with an already-clipped timeline overlay.
-- Auto-save metadata drafts so review can continue across sessions.
+### 1. Make selects from a growing source pool
+- Scan a project folder of AI-generated source montages in one focused Pool.
+- Set frame-accurate in/out points and see already-clipped regions on the
+  source timeline, so you know what you have saved and what remains.
+- Auto-save drafts so a 30-minute source can be cataloged over days instead of
+  finished in one sitting.
 
-### Catalog
-- Build a searchable library with names, descriptions, tags, characters, scenes,
-  and objects.
-- Use optional OpenAI-assisted labels and reference-frame recognition, or work
-  entirely without AI.
-- Keep project-local sidecars, activity, integrity information, `shotlist.md`,
-  and `shotlist.csv` together with the media.
+### 2. Build a library around your world
+- Give every keeper a name, description, tags, characters, scenes, and objects.
+- Use reference images and optional AI assistance to keep recurring characters
+  and visual settings consistently cataloged.
+- Search or combine filters: “this character in this location with this prop”
+  becomes a usable set of clips, not an excavation through folders.
 
-### Deliver
-- Export frame-accurate smart cuts and curated collections for an NLE-ready
-  folder or zip.
+### 3. Pull the right shots into the next piece
+- Preview clips inline, select a set, and hand it to Premiere or export a
+  curated NLE-ready folder or zip.
+- Keep your stock of character, environment, action, and transition shots
+  ready for the next episode, trailer, social cut, or pitch.
 - Stream-copy keyframe-aligned interiors where possible; short trim edges may
   be losslessly re-encoded to preserve precise cuts.
-- Optionally create Stem Studio audio-separation outputs beneath the project.
 
-### Agent workflows
-- Drive the same catalog and export workflow through a narrow local MCP server.
-- Search by catalog ID, export to fixed safe destinations, and explicitly
-  confirm any OpenAI frame upload.
+### 4. Use AI as an assistant, not the owner
+- Optional OpenAI-assisted labels and reference-frame recognition help with
+  cataloging; you keep the final decision on every select and export.
+- The app stays useful with no API key, and all media plus catalog sidecars stay
+  in your project folder.
 
 ## Quick start
 
@@ -97,18 +105,20 @@ dependencies when needed, builds stale UI assets, starts the local server, and
 opens the browser. If Gatekeeper prompts, right-click the file and choose
 **Open**. This convenience behavior is not a cross-platform installer.
 
-## Built for humans and agents
+## How it fits into your production
 
-The browser UI is for hands-on review; the included local MCP server lets Codex
-and other compatible agents inspect sources, search clips, update metadata,
-export clips, and request explicitly confirmed OpenAI analysis. Start with the
-[MCP guide](./mcp/README.md).
+Clipper Cowboy is the visual memory for a project: the place where your best
+shots become organized building blocks instead of one-off generations. The
+browser UI is for hands-on review, cataloging, and selection. The included local
+MCP server can also let Codex and other compatible agents inspect sources,
+search clips, update metadata, export clips, and request explicitly confirmed
+OpenAI analysis. Start with the [MCP guide](./mcp/README.md).
 
-For audio separation, Clipper Cowboy interoperates with the official Stem Studio
-MCP server. It hands off completed clip paths and stages results under
-`PROJECT_DIR/derived/stems/`; the projects do not exchange credentials or bundle
-each other. Read the [Stem Studio integration guide](./docs/INTEGRATIONS.md) for
-setup, quality choices, and lifecycle limits.
+Optional integrations support that core workflow. For example, Clipper Cowboy
+can hand a completed clip to the official Stem Studio MCP server for local audio
+separation; it does not bundle Stem Studio or exchange credentials. Read the
+[Stem Studio integration guide](./docs/INTEGRATIONS.md) for setup and lifecycle
+limits.
 
 ## Privacy and security
 

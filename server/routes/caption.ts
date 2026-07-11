@@ -6,7 +6,11 @@ import { CAPTION_TMP_DIR } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { resolvePoolId } from "./pool.js";
-import { captionFromFrames, CharacterContext } from "../openai.js";
+import {
+  captionFromFrames,
+  CharacterContext,
+  sendOpenAIClientError,
+} from "../openai.js";
 import { listCharacters, listRefs } from "../util/characters.js";
 
 const router = Router();
@@ -112,6 +116,7 @@ router.post("/caption", async (req, res) => {
       cacheKey,
     });
   } catch (err) {
+    if (sendOpenAIClientError(res, err)) return;
     res.status(500).json({ error: String(err) });
   }
   // NOTE: deliberately not deleting frames here — they live until

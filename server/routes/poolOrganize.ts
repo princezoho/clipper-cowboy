@@ -5,7 +5,11 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { CAPTION_TMP_DIR, config } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
-import { getOpenAI } from "../openai.js";
+import {
+  getOpenAI,
+  getOpenAIClientError,
+  sendOpenAIClientError,
+} from "../openai.js";
 import { resolvePoolId } from "./pool.js";
 import { listCharacters } from "../util/characters.js";
 import { listEntities } from "../util/entities.js";
@@ -249,6 +253,10 @@ async function analyzeOne(
       },
     };
   } catch (err) {
+    // A quota or rate-limit error affects the whole AI pass. Bubble it up so
+    // the route can return the structured, client-safe OpenAI error instead
+    // of disguising it as a per-video extraction failure.
+    if (getOpenAIClientError(err)) throw err;
     return {
       id,
       filename,
@@ -301,11 +309,18 @@ router.post("/pool/analyze-content", async (req, res) => {
   }));
   const missing = resolved.filter((r) => !r.abs).map((r) => r.id);
 
-  const suggestions = await pLimitAll(
-    resolved.filter((r) => r.abs),
-    CONCURRENCY,
-    async (r) => analyzeOne(r.id, r.abs as string, catalogText)
-  );
+  let suggestions: SuggestionRow[];
+  try {
+    suggestions = await pLimitAll(
+      resolved.filter((r) => r.abs),
+      CONCURRENCY,
+      async (r) => analyzeOne(r.id, r.abs as string, catalogText)
+    );
+  } catch (err) {
+    if (sendOpenAIClientError(res, err)) return;
+    res.status(500).json({ error: String(err) });
+    return;
+  }
 
   for (const m of missing) {
     suggestions.push({

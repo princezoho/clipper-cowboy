@@ -33,6 +33,7 @@ import ClipMetaForm from "../components/ClipMetaForm";
 import TagCharacterFromFrame from "../components/TagCharacterFromFrame";
 import EntityMultiPicker from "../components/EntityMultiPicker";
 import { fireToast } from "../lib/toast";
+import { showOpenAIQuotaToast, userFacingOpenAIError } from "../lib/openaiUx";
 import { useDebouncedAutosave } from "../lib/useDebouncedAutosave";
 
 interface Props {
@@ -349,7 +350,10 @@ export default function EditorOverlay({
         setSampleFrames(c.sampleFrames);
         setCaptionCacheKey(c.cacheKey);
       } catch (err) {
-        if (!ac.signal.aborted) setError(String(err));
+        if (!ac.signal.aborted) {
+          showOpenAIQuotaToast(err);
+          setError(userFacingOpenAIError(err));
+        }
       } finally {
         if (!ac.signal.aborted) setCaptioning(false);
       }
