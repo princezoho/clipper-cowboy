@@ -14,6 +14,15 @@ import { appendActivity } from "../util/activity.js";
 import { pathToId } from "../util/id.js";
 
 const router = Router();
+const LIBRARY_ID_RE = /^[a-f0-9]{16}$/;
+
+router.param("id", (req, res, next, id) => {
+  if (!LIBRARY_ID_RE.test(id)) {
+    res.status(400).json({ error: "invalid library id" });
+    return;
+  }
+  next();
+});
 
 interface LibraryMeta {
   id: string;
@@ -39,7 +48,48 @@ interface LibraryMeta {
 }
 
 function metaPath(id: string): string {
+  if (!LIBRARY_ID_RE.test(id)) throw new Error("invalid library id");
   return path.join(config.clipMetaDir, `${id}.json`);
+}
+
+function isContained(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+/** Existing, non-symlink-escaped file beneath a trusted root. */
+function safeExistingFile(root: string, candidate: unknown): string | null {
+  if (typeof candidate !== "string" || !path.isAbsolute(candidate)) return null;
+  try {
+    const realRoot = fs.realpathSync(root);
+    const realCandidate = fs.realpathSync(candidate);
+    if (!isContained(realRoot, realCandidate)) return null;
+    return fs.statSync(realCandidate).isFile() ? realCandidate : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Clips are intentionally flat; supports missing restore/repair targets too. */
+function safeClipTarget(candidate: unknown): string | null {
+  if (typeof candidate !== "string" || !path.isAbsolute(candidate)) return null;
+  const resolved = path.resolve(candidate);
+  if (path.dirname(resolved) !== path.resolve(config.clipsDir)) return null;
+  try {
+    const realClips = fs.realpathSync(config.clipsDir);
+    const realParent = fs.realpathSync(path.dirname(resolved));
+    if (realParent !== realClips) return null;
+    if (fs.existsSync(resolved)) {
+      const realCandidate = fs.realpathSync(resolved);
+      if (path.dirname(realCandidate) !== realClips || !fs.statSync(realCandidate).isFile()) {
+        return null;
+      }
+      return realCandidate;
+    }
+    return resolved;
+  } catch {
+    return null;
+  }
 }
 
 function readMeta(p: string): LibraryMeta | null {
@@ -55,11 +105,13 @@ function listMetas(): LibraryMeta[] {
   const items: LibraryMeta[] = [];
   for (const name of fs.readdirSync(config.clipMetaDir)) {
     if (!name.endsWith(".json")) continue;
+    const sidecarId = name.slice(0, -5);
+    if (!LIBRARY_ID_RE.test(sidecarId)) continue;
     const m = readMeta(path.join(config.clipMetaDir, name));
     // Keep entries even when the underlying file is gone so the Library tab
     // can surface missing-file clips. Callers filter on `fs.existsSync(m.path)`
     // when they need only "real" media.
-    if (m) items.push(m);
+    if (m && m.id === sidecarId) items.push(m);
   }
   items.sort((a, b) => b.created - a.created);
   return items;
@@ -74,8 +126,10 @@ function listOrphans(metas: LibraryMeta[]): {
   if (!fs.existsSync(config.clipsDir)) return [];
   const knownPaths = new Set<string>();
   for (const m of metas) {
-    if (m.path) knownPaths.add(m.path);
-    if (m.sourceCopyPath) knownPaths.add(m.sourceCopyPath);
+    const clip = safeClipTarget(m.path);
+    const sourceCopy = safeClipTarget(m.sourceCopyPath);
+    if (clip) knownPaths.add(clip);
+    if (sourceCopy) knownPaths.add(sourceCopy);
   }
   const out: { filename: string; size: number; mtime: number; path: string }[] = [];
   for (const name of fs.readdirSync(config.clipsDir)) {
@@ -104,8 +158,10 @@ const idToFile = new Map<string, string>();
 const idToSource = new Map<string, string>();
 
 function pickSourcePath(m: LibraryMeta): string | null {
-  if (m.sourceCopyPath && fs.existsSync(m.sourceCopyPath)) return m.sourceCopyPath;
-  if (m.sourcePath && fs.existsSync(m.sourcePath)) return m.sourcePath;
+  const sourceCopy = safeExistingFile(config.clipsDir, m.sourceCopyPath);
+  if (sourceCopy) return sourceCopy;
+  const source = safeExistingFile(config.projectDir, m.sourcePath);
+  if (source) return source;
   return null;
 }
 
@@ -113,7 +169,8 @@ function refreshIndex() {
   idToFile.clear();
   idToSource.clear();
   for (const m of listMetas()) {
-    idToFile.set(m.id, m.path);
+    const clip = safeExistingFile(config.clipsDir, m.path);
+    if (clip) idToFile.set(m.id, clip);
     const src = pickSourcePath(m);
     if (src) idToSource.set(m.id, src);
   }
@@ -125,10 +182,12 @@ router.get("/library", async (_req, res) => {
   let missingCount = 0;
   const items = metas.map((m) => {
     const sourceAvailable = pickSourcePath(m) !== null;
-    const missing = !m.path || !fs.existsSync(m.path);
+    const safePath = safeClipTarget(m.path);
+    const missing = !safePath || !fs.existsSync(safePath);
     if (missing) missingCount += 1;
     return {
       ...m,
+      path: safePath ?? "",
       thumbUrl: `/api/library/${m.id}/thumb`,
       videoUrl: `/api/library/${m.id}/video`,
       sourceVideoUrl: sourceAvailable
@@ -136,6 +195,7 @@ router.get("/library", async (_req, res) => {
         : undefined,
       sourceAvailable,
       ...(missing ? { missing: true } : {}),
+      ...(!safePath && m.path ? { unsafePathRejected: true } : {}),
     };
   });
   const orphans = listOrphans(metas);
@@ -149,9 +209,9 @@ router.patch("/library/:id", (req, res) => {
     return;
   }
   const Schema = z.object({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    tags: z.array(z.string()).optional(),
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().max(5_000).optional(),
+    tags: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     characters: z
       .array(z.object({ id: z.string(), name: z.string() }))
       .optional(),
@@ -172,7 +232,12 @@ router.patch("/library/:id", (req, res) => {
     res.status(500).json({ error: "could not read meta" });
     return;
   }
-  const updated: LibraryMeta = { ...meta, ...parsed.data };
+  const clipPath = safeClipTarget(meta.path);
+  if (!clipPath) {
+    res.status(409).json({ error: "unsafe clip path in sidecar" });
+    return;
+  }
+  const updated: LibraryMeta = { ...meta, path: clipPath, ...parsed.data };
   fs.writeFileSync(mp, JSON.stringify(updated, null, 2));
   scheduleShotlistRebuild();
   res.json(updated);
@@ -220,8 +285,13 @@ router.post("/library/:id/reexport", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const source = pickSourcePath(meta) ?? meta.sourcePath;
-  if (!source || !fs.existsSync(source)) {
+  const source = pickSourcePath(meta);
+  const clipPath = safeExistingFile(config.clipsDir, meta.path);
+  if (!clipPath) {
+    res.status(409).json({ error: "unsafe or missing clip path in sidecar" });
+    return;
+  }
+  if (!source) {
     res.status(400).json({ error: "original source no longer available" });
     return;
   }
@@ -240,17 +310,18 @@ router.post("/library/:id/reexport", async (req, res) => {
     res.status(400).json({ error: "selection too short" });
     return;
   }
-  const ext = path.extname(meta.path);
+  const ext = path.extname(clipPath);
   const tempPath = path.join(
-    path.dirname(meta.path),
+    path.dirname(clipPath),
     `.reexport-${req.params.id}${ext}`
   );
   try {
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     const cut = await smartCut(source, inT, outT, tempPath);
-    fs.renameSync(tempPath, meta.path);
+    fs.renameSync(tempPath, clipPath);
     const updated: LibraryMeta = {
       ...meta,
+      path: clipPath,
       ...parsed.data,
       in: inT,
       out: outT,
@@ -294,8 +365,24 @@ router.delete("/library/:id", (req, res) => {
     res.status(500).json({ error: "could not read meta" });
     return;
   }
-  for (const p of [meta.path, meta.sourceCopyPath]) {
-    if (!p) continue;
+  const paths: string[] = [];
+  for (const candidate of [meta.path, meta.sourceCopyPath]) {
+    if (!candidate) continue;
+    const target = safeClipTarget(candidate);
+    if (!target) {
+      res.status(409).json({ error: "unsafe media path in sidecar; nothing was deleted" });
+      return;
+    }
+    if (fs.existsSync(target)) {
+      const existing = safeExistingFile(config.clipsDir, target);
+      if (!existing) {
+        res.status(409).json({ error: "unsafe media symlink in sidecar; nothing was deleted" });
+        return;
+      }
+      paths.push(existing);
+    }
+  }
+  for (const p of paths) {
     try {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     } catch {
@@ -420,11 +507,12 @@ router.post("/library/:id/reveal", (req, res) => {
     res.status(500).json({ error: "could not read sidecar" });
     return;
   }
-  if (!meta.path || !fs.existsSync(meta.path)) {
+  const clipPath = safeExistingFile(config.clipsDir, meta.path);
+  if (!clipPath) {
     res.status(410).json({ error: "clip file missing" });
     return;
   }
-  spawnReveal(meta.path);
+  spawnReveal(clipPath);
   res.json({ ok: true });
 });
 
@@ -442,11 +530,22 @@ router.post("/reveal", (req, res) => {
     res.status(400).json({ error: "absolute path required" });
     return;
   }
-  if (!fs.existsSync(parsed.data.path)) {
+  const revealPath = safeExistingFile(config.projectDir, parsed.data.path);
+  let safeDirectory: string | null = null;
+  try {
+    const realProject = fs.realpathSync(config.projectDir);
+    const realCandidate = fs.realpathSync(parsed.data.path);
+    if (isContained(realProject, realCandidate) && fs.statSync(realCandidate).isDirectory()) {
+      safeDirectory = realCandidate;
+    }
+  } catch {
+    // handled below
+  }
+  if (!revealPath && !safeDirectory) {
     res.status(410).json({ error: "path not found" });
     return;
   }
-  spawnReveal(parsed.data.path);
+  spawnReveal(revealPath ?? safeDirectory!);
   res.json({ ok: true });
 });
 
@@ -465,11 +564,16 @@ router.post("/library/:id/restore", (req, res) => {
     res.status(500).json({ error: "could not read sidecar" });
     return;
   }
-  if (fs.existsSync(meta.path)) {
-    res.json({ ok: true, path: meta.path, note: "already present" });
+  const targetPath = safeClipTarget(meta.path);
+  if (!targetPath) {
+    res.status(409).json({ error: "unsafe restore path in sidecar" });
     return;
   }
-  const target = path.basename(meta.path).toLowerCase();
+  if (fs.existsSync(targetPath)) {
+    res.json({ ok: true, path: targetPath, note: "already present" });
+    return;
+  }
+  const target = path.basename(targetPath).toLowerCase();
   const trash = trashDir();
   let candidate: string | null = null;
   try {
@@ -489,7 +593,7 @@ router.post("/library/:id/restore", (req, res) => {
     return;
   }
   try {
-    fs.renameSync(candidate, meta.path);
+    fs.renameSync(candidate, targetPath);
   } catch (err) {
     res.status(500).json({ error: String(err) });
     return;
@@ -502,17 +606,25 @@ router.post("/library/:id/restore", (req, res) => {
   }
   scheduleShotlistRebuild();
   appendActivity("clip_restored", { id: req.params.id, name: meta.name });
-  res.json({ ok: true, path: meta.path });
+  res.json({ ok: true, path: targetPath });
 });
 
 router.post("/library/repair-missing", async (_req, res) => {
   const metas = listMetas();
-  const missing = metas.filter((m) => !m.path || !fs.existsSync(m.path));
+  const missing = metas.filter((m) => {
+    const target = safeClipTarget(m.path);
+    return !target || !fs.existsSync(target);
+  });
   const errors: { id: string; error: string }[] = [];
   let repaired = 0;
   for (const meta of missing) {
-    const source = pickSourcePath(meta) ?? meta.sourcePath;
-    if (!source || !fs.existsSync(source)) {
+    const targetPath = safeClipTarget(meta.path);
+    if (!targetPath) {
+      errors.push({ id: meta.id, error: "unsafe clip path in sidecar" });
+      continue;
+    }
+    const source = pickSourcePath(meta);
+    if (!source) {
       errors.push({ id: meta.id, error: "source not available" });
       continue;
     }
@@ -525,17 +637,18 @@ router.post("/library/repair-missing", async (_req, res) => {
       errors.push({ id: meta.id, error: "no valid in/out on sidecar" });
       continue;
     }
-    const ext = path.extname(meta.path);
+    const ext = path.extname(targetPath);
     const tempPath = path.join(
-      path.dirname(meta.path),
+      path.dirname(targetPath),
       `.repair-${meta.id}${ext}`
     );
     try {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       const cut = await smartCut(source, inT, outT, tempPath);
-      fs.renameSync(tempPath, meta.path);
+      fs.renameSync(tempPath, targetPath);
       const updated: LibraryMeta = {
         ...meta,
+        path: targetPath,
         in: inT,
         out: outT,
         duration: outT - inT,
@@ -574,10 +687,9 @@ router.post("/library/orphans/adopt", async (req, res) => {
   }
   const ids: string[] = [];
   let adopted = 0;
-  for (const p of parsed.data.paths) {
-    if (!path.isAbsolute(p)) continue;
-    if (!fs.existsSync(p)) continue;
-    if (!isSupportedVideo(p)) continue;
+  for (const requestedPath of parsed.data.paths) {
+    const p = safeExistingFile(config.clipsDir, requestedPath);
+    if (!p || !isSupportedVideo(p)) continue;
     let duration = 0;
     try {
       duration = await getDuration(p);
@@ -625,9 +737,9 @@ router.post("/library/orphans/trash", (req, res) => {
   }
   const trash = trashDir();
   let trashed = 0;
-  for (const p of parsed.data.paths) {
-    if (!path.isAbsolute(p)) continue;
-    if (!fs.existsSync(p)) continue;
+  for (const requestedPath of parsed.data.paths) {
+    const p = safeExistingFile(config.clipsDir, requestedPath);
+    if (!p) continue;
     let dest = path.join(trash, path.basename(p));
     let n = 2;
     while (fs.existsSync(dest)) {
@@ -661,9 +773,11 @@ const RenameBody = z.object({
 
 function buildLibraryItem(meta: LibraryMeta) {
   const sourceAvailable = pickSourcePath(meta) !== null;
-  const missing = !meta.path || !fs.existsSync(meta.path);
+  const safePath = safeClipTarget(meta.path);
+  const missing = !safePath || !fs.existsSync(safePath);
   return {
     ...meta,
+    path: safePath ?? "",
     thumbUrl: `/api/library/${meta.id}/thumb`,
     videoUrl: `/api/library/${meta.id}/video`,
     sourceVideoUrl: sourceAvailable
@@ -691,13 +805,14 @@ router.post("/library/:id/rename", (req, res) => {
     res.status(500).json({ error: "could not read meta" });
     return;
   }
-  if (!fs.existsSync(meta.path)) {
+  const oldPath = safeExistingFile(config.clipsDir, meta.path);
+  if (!oldPath) {
     res.status(404).json({ error: "clip file missing" });
     return;
   }
-  const ext = path.extname(meta.path);
-  const newAbs = path.join(path.dirname(meta.path), `${parsed.data.name}${ext}`);
-  if (path.resolve(newAbs) === path.resolve(meta.path)) {
+  const ext = path.extname(oldPath);
+  const newAbs = path.join(config.clipsDir, `${parsed.data.name}${ext}`);
+  if (path.resolve(newAbs) === path.resolve(oldPath)) {
     // No-op filename, but still update meta.name in case it drifted.
     const updated: LibraryMeta = { ...meta, name: parsed.data.name };
     fs.writeFileSync(oldMp, JSON.stringify(updated, null, 2));
@@ -709,7 +824,7 @@ router.post("/library/:id/rename", (req, res) => {
     return;
   }
   try {
-    fs.renameSync(meta.path, newAbs);
+    fs.renameSync(oldPath, newAbs);
   } catch (err) {
     res.status(500).json({ error: String(err) });
     return;
@@ -756,7 +871,7 @@ router.post("/library/:id/rename", (req, res) => {
 // Premiere imports them into the active project. The user's focus jumps to
 // Premiere — callers should confirm intent first.
 const SendToPremiereBody = z.object({
-  ids: z.array(z.string().min(1)).min(1).max(500),
+  ids: z.array(z.string().regex(LIBRARY_ID_RE)).min(1).max(500),
 });
 
 function resolveLibraryPaths(ids: string[]): { paths: string[]; missing: string[] } {
@@ -769,11 +884,12 @@ function resolveLibraryPaths(ids: string[]): { paths: string[]; missing: string[
       continue;
     }
     const meta = readMeta(mp);
-    if (!meta || !meta.path || !fs.existsSync(meta.path)) {
+    const clipPath = meta ? safeExistingFile(config.clipsDir, meta.path) : null;
+    if (!clipPath) {
       missing.push(id);
       continue;
     }
-    paths.push(meta.path);
+    paths.push(clipPath);
   }
   return { paths, missing };
 }

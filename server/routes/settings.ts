@@ -10,8 +10,15 @@ const router = Router();
 const ENV_PATH = path.resolve(process.cwd(), ".env");
 
 const Body = z.object({
-  projectDir: z.string().optional(),
-  openaiApiKey: z.string().optional(),
+  projectDir: z.string().max(4096).refine((v) => !/[\r\n]/.test(v), {
+    message: "projectDir must be a single line",
+  }).optional(),
+  openaiApiKey: z.string().max(4096).refine((v) => !/[\r\n]/.test(v), {
+    message: "openaiApiKey must be a single line",
+  }).optional(),
+  stemStudioRoot: z.string().max(4096).refine((v) => !/[\r\n]/.test(v), {
+    message: "stemStudioRoot must be a single line",
+  }).optional(),
 });
 
 function expandHome(p: string): string {
@@ -38,7 +45,15 @@ function readEnvFile(): Record<string, string> {
 }
 
 function writeEnvFile(values: Record<string, string>) {
-  const known = ["OPENAI_API_KEY", "PROJECT_DIR", "PORT"];
+  const known = [
+    "OPENAI_API_KEY",
+    "PROJECT_DIR",
+    "PORT",
+    "CLIPPER_STEM_STUDIO_ROOT",
+    "CLIPPER_STEM_STUDIO_PYTHON",
+    "CLIPPER_STEM_STUDIO_CACHE",
+    "CLIPPER_STEMS_TIMEOUT_MINUTES",
+  ];
   const lines: string[] = [];
   for (const k of known) {
     if (k in values) lines.push(`${k}=${values[k] ?? ""}`);
@@ -46,7 +61,9 @@ function writeEnvFile(values: Record<string, string>) {
   for (const k of Object.keys(values)) {
     if (!known.includes(k)) lines.push(`${k}=${values[k] ?? ""}`);
   }
-  fs.writeFileSync(ENV_PATH, lines.join("\n") + "\n");
+  fs.writeFileSync(ENV_PATH, lines.join("\n") + "\n", { mode: 0o600 });
+  // Existing files keep their previous mode when overwritten, so enforce it.
+  fs.chmodSync(ENV_PATH, 0o600);
 }
 
 /**
@@ -122,6 +139,11 @@ router.post("/settings", (req, res) => {
   if (parsed.data.openaiApiKey !== undefined) {
     env.OPENAI_API_KEY = parsed.data.openaiApiKey.trim();
   }
+  if (parsed.data.stemStudioRoot !== undefined) {
+    env.CLIPPER_STEM_STUDIO_ROOT = expandHome(
+      parsed.data.stemStudioRoot.trim()
+    );
+  }
   writeEnvFile(env);
 
   res.json({
@@ -130,6 +152,7 @@ router.post("/settings", (req, res) => {
     current: {
       projectDir: config.projectDir,
       hasOpenAIKey: Boolean(config.openaiApiKey),
+      stemStudioConfigured: config.stemStudioConfigured,
     },
   });
 });

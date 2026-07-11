@@ -37,6 +37,8 @@ const clipsDir = path.join(projectDir, "clips");
 const charactersDir = path.join(projectDir, "characters");
 const exportsDir = path.join(projectDir, "exports");
 const imagesDir = path.join(projectDir, "images");
+const derivedDir = path.join(projectDir, "derived");
+const stemsDir = path.join(derivedDir, "stems");
 const internalDir = path.join(projectDir, ".clipcataloger");
 
 const clipMetaDir = path.join(internalDir, "clip-meta");
@@ -45,6 +47,35 @@ const captionTmpDir = path.join(internalDir, "caption-tmp");
 const durationsPath = path.join(internalDir, "durations.json");
 const imageMetaDir = path.join(internalDir, "image-meta");
 const imageThumbsDir = path.join(internalDir, "image-thumbs");
+const sourceMetaDir = path.join(internalDir, "source-meta");
+
+function optionalAbsoluteEnv(name: string): string | undefined {
+  const value = (process.env[name] ?? "").trim();
+  return value ? path.resolve(expandHome(value)) : undefined;
+}
+
+const stemStudioRoot = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_ROOT");
+const explicitStemPython = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_PYTHON");
+const explicitStemCache = optionalAbsoluteEnv("CLIPPER_STEM_STUDIO_CACHE");
+const macStemSupportDir = path.join(
+  os.homedir(),
+  "Library",
+  "Application Support",
+  "stem-studio"
+);
+const macStemPython = path.join(macStemSupportDir, "venv", "bin", "python");
+const macStemCache = path.join(macStemSupportDir, "models");
+const stemStudioPython =
+  explicitStemPython ||
+  (process.platform === "darwin" && fs.existsSync(macStemPython)
+    ? macStemPython
+    : undefined);
+const stemStudioCache =
+  explicitStemCache ||
+  (process.platform === "darwin" && fs.existsSync(macStemCache)
+    ? macStemCache
+    : undefined);
+const rawStemTimeout = Number(process.env.CLIPPER_STEMS_TIMEOUT_MINUTES ?? 360);
 
 const shotlistMdPath = path.join(projectDir, "shotlist.md");
 const shotlistCsvPath = path.join(projectDir, "shotlist.csv");
@@ -54,17 +85,23 @@ for (const d of [
   charactersDir,
   exportsDir,
   imagesDir,
+  derivedDir,
+  stemsDir,
   internalDir,
   clipMetaDir,
   thumbCacheDir,
   captionTmpDir,
   imageMetaDir,
   imageThumbsDir,
+  sourceMetaDir,
 ]) {
   fs.mkdirSync(d, { recursive: true });
 }
 
 export const config = {
+  // This app can read and mutate local media and credentials. Keep it on the
+  // loopback interface unless a future authenticated deployment mode is added.
+  host: "127.0.0.1",
   port: Number(process.env.PORT ?? 47474),
   projectDir,
   // poolDir == projectDir (sources live at the project root)
@@ -73,6 +110,8 @@ export const config = {
   charactersDir,
   exportsDir,
   imagesDir,
+  derivedDir,
+  stemsDir,
   internalDir,
   clipMetaDir,
   thumbCacheDir,
@@ -80,9 +119,18 @@ export const config = {
   durationsPath,
   imageMetaDir,
   imageThumbsDir,
+  sourceMetaDir,
   shotlistMdPath,
   shotlistCsvPath,
   openaiApiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
+  stemStudioRoot,
+  stemStudioPython,
+  stemStudioCache,
+  stemStudioConfigured: Boolean(stemStudioRoot),
+  stemTimeoutMinutes:
+    Number.isFinite(rawStemTimeout) && rawStemTimeout >= 1
+      ? Math.min(rawStemTimeout, 24 * 60)
+      : 360,
 };
 
 export const POOL_CACHE_DIR = thumbCacheDir; // legacy alias (still used by some routes)
@@ -113,6 +161,7 @@ export const RESERVED_PROJECT_DIRS = new Set([
   "characters",
   "exports",
   "images",
+  "derived",
   ".clipcataloger",
 ]);
 

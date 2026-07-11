@@ -12,16 +12,17 @@ import { getDuration } from "../ffmpeg.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { scheduleShotlistRebuild } from "../util/shotlist.js";
 import { appendActivity } from "../util/activity.js";
+import { stemJobManager } from "../stems/manager.js";
 
 const router = Router();
 
 const Body = z.object({
-  sourceId: z.string(),
+  sourceId: z.string().regex(/^[a-f0-9]{16}$/),
   in: z.number().min(0),
   out: z.number().min(0),
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
   description: z.string().default(""),
-  tags: z.array(z.string()).default([]),
+  tags: z.array(z.string().trim().min(1).max(120)).max(50).default([]),
   characters: z
     .array(z.object({ id: z.string(), name: z.string() }))
     .default([]),
@@ -32,16 +33,34 @@ const Body = z.object({
     .array(z.object({ id: z.string(), name: z.string() }))
     .default([]),
   mode: z.enum(["clip", "source", "bundle"]).default("clip"),
+  stems: z
+    .object({ quality: z.enum(["fast", "high", "max"]) })
+    .optional(),
+}).superRefine((value, ctx) => {
+  if (value.mode === "source" && value.stems) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["stems"],
+      message: "stem separation is available for Clip and Clip + Source exports",
+    });
+  }
 });
 
-function uniqueOutputPath(dir: string, base: string, ext: string): string {
+/** Atomically reserve a collision-safe output so UI/MCP processes cannot race. */
+function reserveUniqueOutputPath(dir: string, base: string, ext: string): string {
   let candidate = path.join(dir, `${base}${ext}`);
   let n = 2;
-  while (fs.existsSync(candidate)) {
-    candidate = path.join(dir, `${base}_${n}${ext}`);
-    n += 1;
+  while (true) {
+    try {
+      const fd = fs.openSync(candidate, "wx", 0o600);
+      fs.closeSync(fd);
+      return candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      candidate = path.join(dir, `${base}_${n}${ext}`);
+      n += 1;
+    }
   }
-  return candidate;
 }
 
 router.post("/export", async (req, res) => {
@@ -61,6 +80,7 @@ router.post("/export", async (req, res) => {
     scenes,
     objects,
     mode,
+    stems,
   } = parsed.data;
   const source = resolvePoolId(sourceId);
   if (!source) {
@@ -95,7 +115,7 @@ router.post("/export", async (req, res) => {
     let details = "Whole source montage cloned into library.";
 
     if (mode === "clip" || mode === "bundle") {
-      clipPath = uniqueOutputPath(config.clipsDir, base, ext);
+      clipPath = reserveUniqueOutputPath(config.clipsDir, base, ext);
       cleanupOnFail.push(clipPath);
       const result = await smartCut(source, inAdj, outAdj, clipPath);
       cutMode = result.mode;
@@ -104,7 +124,7 @@ router.post("/export", async (req, res) => {
 
     if (mode === "source" || mode === "bundle") {
       const sourceBase = mode === "source" ? base : `${base}.source`;
-      sourceCopyPath = uniqueOutputPath(config.clipsDir, sourceBase, ext);
+      sourceCopyPath = reserveUniqueOutputPath(config.clipsDir, sourceBase, ext);
       cleanupOnFail.push(sourceCopyPath);
       const kind = await cloneOrCopy(source, sourceCopyPath);
       if (mode === "source") {
@@ -155,7 +175,28 @@ router.post("/export", async (req, res) => {
       mode: cutMode,
       durationSec: meta.duration,
     });
-    res.json(meta);
+    let stemJob;
+    if (stems && clipPath) {
+      try {
+        stemJob = stemJobManager.enqueue({
+          clipId: id,
+          clipName: name,
+          clipPath,
+          quality: stems.quality,
+        });
+      } catch (error) {
+        // The foreground export is already valid. An unexpected queue bug must
+        // never roll it back or remove the user's new clip.
+        appendActivity("stems_failed", {
+          clipId: id,
+          clipName: name,
+          quality: stems.quality,
+          error: "background stem queue could not start",
+        });
+      }
+    }
+    const response = { ...meta, ...(stemJob ? { stemJob } : {}) };
+    res.json(response);
   } catch (err) {
     for (const f of cleanupOnFail) {
       try {

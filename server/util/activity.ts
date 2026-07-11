@@ -27,7 +27,14 @@ export type ActivityKind =
   | "orphans_trashed"
   | "clips_copied"
   | "clip_renamed"
-  | "clips_sent_to_premiere";
+  | "clips_sent_to_premiere"
+  | "source_analyzed"
+  | "source_batch_started"
+  | "pool_source_moved"
+  | "pool_organize_analyzed"
+  | "stems_queued"
+  | "stems_completed"
+  | "stems_failed";
 
 export interface ActivityEvent {
   ts: number;

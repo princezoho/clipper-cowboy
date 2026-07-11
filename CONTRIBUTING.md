@@ -5,9 +5,9 @@ Glad you're here. PRs, issues, and discussions are all welcome.
 ## Dev setup
 
 ```bash
-git clone https://github.com/your-org/clipper-cowboy.git
+git clone https://github.com/princezoho/clipper-cowboy.git
 cd clipper-cowboy
-npm install
+npm run setup
 npm run dev
 ```
 
@@ -22,6 +22,31 @@ Open `:5173` for the app. The Vite dev server proxies `/api/*` to `:47474`.
 On a brand-new clone you'll land on the first-run onboarding screen — point
 it at any folder (it'll be created if missing) and you're off.
 
+## Pre-share / pre-publish checks
+
+Before sharing this repository with anyone outside your machine:
+
+1. Run:
+
+   ```bash
+   npm run public:ready
+   ```
+
+   This validates there are no obvious credential leaks, ensures docs exist,
+   and confirms the UI build, MCP typecheck/tests/protocol smoke, and local
+   dependency doctor all succeed.
+2. Confirm `SECURITY.md` is up to date and that you agree the checklist matches
+   your repo state.
+3. Audit `.env` usage locally:
+
+   - `OPENAI_API_KEY` should be set only in your local `.env`.
+   - never commit test keys or pasted secrets in issues/PRs/screenshots.
+4. Refresh README screenshots if UI changed materially since last screenshot update.
+5. Keep the repo private until you are ready to publish.
+
+> This is a local-first app with BYO AI keys. The repo must remain functional
+> when `OPENAI_API_KEY` is not set.
+
 ## Project layout
 
 - `server/` — Express + ffmpeg. Each route file under `server/routes/` is
@@ -30,6 +55,8 @@ it at any folder (it'll be created if missing) and you're off.
 - `src/` — Vite + React + Tailwind. Top-level views in `src/views/`, shared
   React components in `src/components/`, the API client + hooks in
   `src/lib/`.
+- `mcp/` — standalone stdio server for agent-driven catalog and export work.
+  Keep its tools ID-based and run `npm run mcp:verify` after every change.
 - `public/mockups/` — living UX design docs. The `ux-preview.html` page is
   hand-written HTML/Tailwind that mirrors what the real React app looks like.
   Treat it as a spec, not a build artifact.
@@ -41,7 +68,8 @@ the bit-identical-body guarantee is load-bearing.
 
 ## Code style
 
-- **TypeScript strict mode.** Run `npx tsc --noEmit` before opening a PR.
+- **TypeScript strict mode.** Run `npm run typecheck` and
+  `npm run mcp:typecheck` before opening a PR.
 - **No code-formatter wars.** The repo doesn't pin Prettier or ESLint; just
   match the surrounding style (2-space indent, single quotes in JSX, double
   quotes in TS).

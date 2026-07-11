@@ -1,0 +1,3 @@
+# CODEOWNERS helps preserve review control before repo sharing.
+# Replace @princezoho with your actual GitHub account if different.
+* @princezoho

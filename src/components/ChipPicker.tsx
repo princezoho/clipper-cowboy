@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { NamedRef } from "../lib/api";
+import { useFloatingMenuPosition } from "../lib/useFloatingMenuPosition";
 
 export type ChipTone = "emerald" | "sky" | "fuchsia" | "neutral";
 
@@ -69,6 +71,10 @@ const TONE_REMOVE: Record<ChipTone, string> = {
  * absolute-positioned overlay) so it works gracefully inside grid cards
  * without escaping the card bounds.
  */
+function isEntityMode(props: Props): props is EntityModeProps {
+  return props.mode === "entity";
+}
+
 export default function ChipPicker(props: Props) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -77,8 +83,12 @@ export default function ChipPicker(props: Props) {
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const menuStyle = useFloatingMenuPosition(inputRef, open, 208);
 
   const tone = props.tone ?? "neutral";
+  const isEntity = isEntityMode(props);
+  const entityOptions = isEntity ? props.options : [];
+  const entityCurrent = isEntity ? props.current : [];
 
   // Auto-focus the input when opening.
   useEffect(() => {
@@ -107,24 +117,23 @@ export default function ChipPicker(props: Props) {
   }, [open, text]);
 
   const filteredOptions = useMemo(() => {
-    if (props.mode !== "entity") return [];
+    if (!isEntity) return [];
     const q = text.trim().toLowerCase();
-    const has = new Set(props.current.map((c) => c.id));
-    const all = props.options.filter((o) => !has.has(o.id));
+    const has = new Set(entityCurrent.map((c) => c.id));
+    const all = entityOptions.filter((o) => !has.has(o.id));
     if (!q) return all.slice(0, 12);
     return all
       .filter((o) => o.name.toLowerCase().includes(q))
       .slice(0, 12);
-  }, [props, text]);
+  }, [entityCurrent, entityOptions, isEntity, text]);
 
   const exactEntityMatch = useMemo(() => {
-    if (props.mode !== "entity") return null;
+    if (!isEntity) return null;
     const q = text.trim().toLowerCase();
     if (!q) return null;
-    return (
-      props.options.find((o) => o.name.toLowerCase() === q) ?? null
-    );
-  }, [props, text]);
+    return entityOptions.find((o) => o.name.toLowerCase() === q) ?? null;
+  }, [entityOptions, isEntity, text]);
+
 
   function commitOnBlur() {
     const q = text.trim();
@@ -292,8 +301,14 @@ export default function ChipPicker(props: Props) {
             className="w-32 rounded-full bg-ink-800 px-2 py-0.5 text-[11px] text-ink-100 outline-none ring-1 ring-ink-700 placeholder:text-ink-500 focus:ring-accent-500"
           />
           {props.mode === "entity" &&
-            (filteredOptions.length > 0 || (props.allowCreate && text.trim())) && (
-              <div className="absolute left-0 top-full z-20 mt-1 max-h-52 w-44 overflow-y-auto rounded-md border border-ink-700 bg-ink-800 shadow-lg">
+            open &&
+            menuStyle &&
+            (filteredOptions.length > 0 || (props.allowCreate && text.trim())) &&
+            createPortal(
+              <div
+                style={menuStyle}
+                className="max-h-52 overflow-y-auto rounded-md border border-ink-700 bg-ink-800 shadow-lg"
+              >
                 {filteredOptions.map((o, i) => (
                   <button
                     key={o.id}
@@ -329,7 +344,8 @@ export default function ChipPicker(props: Props) {
                       {busy ? "Creating…" : `+ Create "${text.trim()}"`}
                     </button>
                   )}
-              </div>
+              </div>,
+              document.body
             )}
           {error && (
             <span

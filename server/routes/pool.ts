@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import {
   config,
   isSupportedVideo,
@@ -10,11 +12,14 @@ import {
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { pathToId } from "../util/id.js";
 import { loadAllDrafts } from "./drafts.js";
+import { appendActivity } from "../util/activity.js";
 
 export interface PoolItem {
   id: string;
   filename: string;
   path: string;
+  /** POSIX-separated rel path under PROJECT_DIR; "" for root. */
+  folder: string;
   size: number;
   mtime: number;
   duration: number;
@@ -30,19 +35,128 @@ export function resolvePoolId(id: string): string | null {
   return null;
 }
 
-function listPoolFiles(): string[] {
-  const entries = fs.readdirSync(config.poolDir, { withFileTypes: true });
-  const files: string[] = [];
-  for (const e of entries) {
-    if (e.isDirectory() && RESERVED_PROJECT_DIRS.has(e.name)) continue;
-    if (e.isFile() && !e.name.startsWith(".") && isSupportedVideo(e.name)) {
-      files.push(path.join(config.poolDir, e.name));
+// Folder name segment validator — mirrors images.ts.
+const FOLDER_SEGMENT_RE = /^[A-Za-z0-9 _\-]+$/;
+
+/**
+ * POSIX-separated relative directory under poolDir for an absolute video path,
+ * or "" when the file lives at the project root.
+ */
+function relFolder(absoluteFile: string): string {
+  const rel = path.relative(config.poolDir, path.dirname(absoluteFile));
+  if (!rel || rel === ".") return "";
+  return rel.split(path.sep).join("/");
+}
+
+/**
+ * Resolve a user-supplied relative folder path to an absolute path under
+ * PROJECT_DIR. Throws on traversal, absolute paths, or invalid segments.
+ * Refuses to resolve to a reserved subdir (clips/, images/, etc.).
+ */
+function resolveFolder(rawRelPath: string): string {
+  const cleaned = (rawRelPath ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (!cleaned) return config.poolDir;
+  if (path.isAbsolute(cleaned) || /^[A-Za-z]:/.test(cleaned)) {
+    throw new Error("absolute paths are not allowed");
+  }
+  const parts = cleaned.split("/");
+  for (const seg of parts) {
+    if (!seg || seg === "." || seg === "..") {
+      throw new Error("invalid folder segment");
+    }
+    if (!FOLDER_SEGMENT_RE.test(seg)) {
+      throw new Error(
+        `invalid folder name "${seg}" — use letters, numbers, spaces, _ or -`
+      );
     }
   }
-  return files.sort();
+  if (RESERVED_PROJECT_DIRS.has(parts[0])) {
+    throw new Error(`"${parts[0]}" is reserved for app use`);
+  }
+  const abs = path.resolve(config.poolDir, parts.join(path.sep));
+  const rootWithSep = config.poolDir.endsWith(path.sep)
+    ? config.poolDir
+    : config.poolDir + path.sep;
+  if (abs !== config.poolDir && !abs.startsWith(rootWithSep)) {
+    throw new Error("path escapes project directory");
+  }
+  return abs;
+}
+
+/**
+ * Recursive walk of PROJECT_DIR for video files. Skips RESERVED_PROJECT_DIRS
+ * at any depth and any directory whose name starts with ".".
+ */
+function walkPoolFiles(): string[] {
+  const out: string[] = [];
+  if (!fs.existsSync(config.poolDir)) return out;
+  const stack: string[] = [config.poolDir];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith(".")) continue;
+      // Reserved dirs only matter at the project root — nested folders called
+      // "clips" inside a user folder are user content.
+      if (
+        e.isDirectory() &&
+        dir === config.poolDir &&
+        RESERVED_PROJECT_DIRS.has(e.name)
+      ) {
+        continue;
+      }
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        stack.push(full);
+      } else if (e.isFile() && isSupportedVideo(e.name)) {
+        out.push(full);
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+/** Recursive folder listing under poolDir. POSIX rel paths, sorted. */
+function listFolders(): string[] {
+  const out: string[] = [];
+  if (!fs.existsSync(config.poolDir)) return out;
+  const stack: { abs: string; rel: string }[] = [
+    { abs: config.poolDir, rel: "" },
+  ];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(cur.abs, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name.startsWith(".")) continue;
+      if (cur.abs === config.poolDir && RESERVED_PROJECT_DIRS.has(e.name)) {
+        continue;
+      }
+      const rel = cur.rel ? `${cur.rel}/${e.name}` : e.name;
+      out.push(rel);
+      stack.push({ abs: path.join(cur.abs, e.name), rel });
+    }
+  }
+  out.sort();
+  return out;
 }
 
 const DURATIONS_PATH = config.durationsPath;
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 interface DurationEntry {
   duration: number;
@@ -106,7 +220,7 @@ function countClipsBySourceId(): Map<string, number> {
 }
 
 router.get("/pool", (_req, res) => {
-  const files = listPoolFiles();
+  const files = walkPoolFiles();
   const cache = loadDurationCache();
   const clipCounts = countClipsBySourceId();
 
@@ -123,6 +237,7 @@ router.get("/pool", (_req, res) => {
       id,
       filename: path.basename(file),
       path: file,
+      folder: relFolder(file),
       size: stat.size,
       mtime: stat.mtimeMs,
       duration,
@@ -161,6 +276,95 @@ async function warmDurationsAsync(
     warmInFlight = false;
   }
 }
+
+// ---- Folder management ----------------------------------------------------
+
+router.get("/pool/folders", (_req, res) => {
+  res.json({ folders: listFolders() });
+});
+
+const FolderBodySchema = z.object({ path: z.string().min(0) });
+
+router.post("/pool/folders", (req, res) => {
+  const parsed = FolderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  let abs: string;
+  try {
+    abs = resolveFolder(parsed.data.path);
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: errorMessage(err) });
+    return;
+  }
+  if (abs === config.poolDir) {
+    res.status(400).json({ error: "cannot create root folder" });
+    return;
+  }
+  try {
+    fs.mkdirSync(abs, { recursive: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+    return;
+  }
+  res.json({
+    ok: true,
+    folder: path
+      .relative(config.poolDir, abs)
+      .split(path.sep)
+      .join("/"),
+  });
+});
+
+router.delete("/pool/folders", (req, res) => {
+  const parsed = FolderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  let abs: string;
+  try {
+    abs = resolveFolder(parsed.data.path);
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: errorMessage(err) });
+    return;
+  }
+  if (abs === config.poolDir) {
+    res.status(400).json({ error: "cannot delete root folder" });
+    return;
+  }
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ error: "folder not found" });
+    return;
+  }
+  let entries: string[];
+  try {
+    entries = fs
+      .readdirSync(abs)
+      .filter((n) => !n.startsWith("."));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+    return;
+  }
+  if (entries.length > 0) {
+    res.status(409).json({
+      error: `folder is not empty (${entries.length} item${entries.length === 1 ? "" : "s"} inside) — move or delete its contents first`,
+    });
+    return;
+  }
+  try {
+    fs.rmdirSync(abs);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+    return;
+  }
+  res.json({ ok: true });
+});
 
 /**
  * One-shot batch index of every source's clip ranges + merged-coverage seconds.
@@ -336,6 +540,313 @@ router.get("/thumb/:id", async (req, res) => {
   }
   res.setHeader("Cache-Control", "public, max-age=86400");
   res.sendFile(cachePath);
+});
+
+// ---- Move -----------------------------------------------------------------
+
+interface MoveResult {
+  oldId: string;
+  newId: string;
+  oldPath: string;
+  newPath: string;
+  folder: string;
+  filename: string;
+  sidecarsUpdated: number;
+  draftsRekeyed: number;
+}
+
+/** Append `-2`, `-3`, … before the extension until the dest path is free. */
+function uniqueDestPath(folderAbs: string, basename: string): string {
+  const ext = path.extname(basename);
+  const stem = path.basename(basename, ext);
+  let candidate = path.join(folderAbs, `${stem}${ext}`);
+  let n = 2;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(folderAbs, `${stem}-${n}${ext}`);
+    n += 1;
+  }
+  return candidate;
+}
+
+/**
+ * Rewrite every clip-meta sidecar that referenced `oldId` so it points at
+ * the new id + path. Returns how many sidecars were touched.
+ */
+function rewriteClipSidecars(
+  oldId: string,
+  newId: string,
+  newPath: string,
+  newFilename: string
+): number {
+  const dir = config.clipMetaDir;
+  if (!fs.existsSync(dir)) return 0;
+  let n = 0;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue;
+    const p = path.join(dir, name);
+    let raw: string;
+    try {
+      raw = fs.readFileSync(p, "utf8");
+    } catch {
+      continue;
+    }
+    let meta: Record<string, unknown>;
+    try {
+      meta = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (meta.sourceId !== oldId) continue;
+    meta.sourceId = newId;
+    meta.sourcePath = newPath;
+    meta.source = newFilename;
+    try {
+      fs.writeFileSync(p, JSON.stringify(meta, null, 2));
+      n += 1;
+    } catch {
+      // best-effort; skip
+    }
+  }
+  return n;
+}
+
+/**
+ * Re-key any draft persisted under `oldId` to live under `newId`. Returns
+ * the number of drafts moved (0 or 1 in practice).
+ */
+function rekeyDrafts(oldId: string, newId: string): number {
+  const draftsPath = path.join(config.internalDir, "drafts.json");
+  if (!fs.existsSync(draftsPath)) return 0;
+  let map: Record<string, unknown>;
+  try {
+    map = JSON.parse(fs.readFileSync(draftsPath, "utf8"));
+  } catch {
+    return 0;
+  }
+  if (!map || typeof map !== "object") return 0;
+  if (!(oldId in map)) return 0;
+  map[newId] = map[oldId];
+  delete map[oldId];
+  try {
+    fs.writeFileSync(draftsPath, JSON.stringify(map, null, 2));
+    return 1;
+  } catch {
+    return 0;
+  }
+}
+
+/** Re-key the durations cache on move so we don't re-probe after rename. */
+function rekeyDurationCache(oldId: string, newId: string) {
+  const cache = loadDurationCache();
+  if (!(oldId in cache)) return;
+  cache[newId] = cache[oldId];
+  delete cache[oldId];
+  saveDurationCache(cache);
+}
+
+/**
+ * Re-key any source-meta sidecar (AI tagging) on move so the next analyze
+ * pass doesn't re-burn the OpenAI call.
+ */
+function rekeySourceMetaSidecar(oldId: string, newId: string) {
+  const dir = path.join(config.internalDir, "source-meta");
+  if (!fs.existsSync(dir)) return;
+  const oldP = path.join(dir, `${oldId}.json`);
+  const newP = path.join(dir, `${newId}.json`);
+  if (!fs.existsSync(oldP)) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(oldP, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    raw.id = newId;
+    fs.writeFileSync(newP, JSON.stringify(raw, null, 2));
+    fs.unlinkSync(oldP);
+  } catch {
+    // ignore
+  }
+}
+
+function moveSourceFile(absSrc: string, folderAbs: string): MoveResult {
+  if (!fs.existsSync(absSrc)) {
+    throw new Error("source file no longer on disk");
+  }
+  fs.mkdirSync(folderAbs, { recursive: true });
+  const filename = path.basename(absSrc);
+  const destAbs = uniqueDestPath(folderAbs, filename);
+  if (path.resolve(destAbs) === path.resolve(absSrc)) {
+    // No-op: file already lives in the target folder under the same name.
+    const oldId = pathToId(absSrc);
+    return {
+      oldId,
+      newId: oldId,
+      oldPath: absSrc,
+      newPath: absSrc,
+      folder: relFolder(absSrc),
+      filename,
+      sidecarsUpdated: 0,
+      draftsRekeyed: 0,
+    };
+  }
+
+  const oldId = pathToId(absSrc);
+  fs.renameSync(absSrc, destAbs);
+  const newId = pathToId(destAbs);
+  const newFilename = path.basename(destAbs);
+
+  let sidecarsUpdated = 0;
+  let draftsRekeyed = 0;
+  try {
+    sidecarsUpdated = rewriteClipSidecars(oldId, newId, destAbs, newFilename);
+    draftsRekeyed = rekeyDrafts(oldId, newId);
+    rekeyDurationCache(oldId, newId);
+    rekeySourceMetaSidecar(oldId, newId);
+  } catch (err) {
+    // Bookkeeping failed — try to undo the rename so the user isn't left in a
+    // half-moved state where Library shows missing-source warnings.
+    try {
+      fs.renameSync(destAbs, absSrc);
+    } catch {
+      // ignore — at this point user has to recover manually
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  }
+
+  // Refresh the in-memory id→path map so subsequent /thumb/:id and
+  // /pool/duration/:id requests for the new id resolve immediately, without
+  // waiting for the next /api/pool fetch.
+  idToPath.delete(oldId);
+  idToPath.set(newId, destAbs);
+
+  return {
+    oldId,
+    newId,
+    oldPath: absSrc,
+    newPath: destAbs,
+    folder: relFolder(destAbs),
+    filename: newFilename,
+    sidecarsUpdated,
+    draftsRekeyed,
+  };
+}
+
+router.post("/pool/move", (req, res) => {
+  const Schema = z.object({
+    ids: z.array(z.string().min(1)).min(1),
+    folder: z.string().min(0),
+  });
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  let folderAbs: string;
+  try {
+    folderAbs = resolveFolder(parsed.data.folder);
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: errorMessage(err) });
+    return;
+  }
+  const items: MoveResult[] = [];
+  const errors: { id: string; error: string }[] = [];
+  for (const id of parsed.data.ids) {
+    const file = resolvePoolId(id);
+    if (!file) {
+      errors.push({ id, error: "not found" });
+      continue;
+    }
+    try {
+      const r = moveSourceFile(file, folderAbs);
+      items.push(r);
+      appendActivity("pool_source_moved", {
+        id: r.newId,
+        oldId: r.oldId,
+        filename: r.filename,
+        folder: r.folder,
+        sidecarsUpdated: r.sidecarsUpdated,
+        draftsRekeyed: r.draftsRekeyed,
+      });
+    } catch (err) {
+      errors.push({
+        id,
+        error: errorMessage(err),
+      });
+    }
+  }
+  res.json({ items, errors });
+});
+
+router.post("/pool/:id/move", (req, res) => {
+  const Schema = z.object({ folder: z.string().min(0) });
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const file = resolvePoolId(req.params.id);
+  if (!file) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  let folderAbs: string;
+  try {
+    folderAbs = resolveFolder(parsed.data.folder);
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: errorMessage(err) });
+    return;
+  }
+  try {
+    const r = moveSourceFile(file, folderAbs);
+    appendActivity("pool_source_moved", {
+      id: r.newId,
+      oldId: r.oldId,
+      filename: r.filename,
+      folder: r.folder,
+      sidecarsUpdated: r.sidecarsUpdated,
+      draftsRekeyed: r.draftsRekeyed,
+    });
+    res.json(r);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: errorMessage(err) });
+  }
+});
+
+// ---- Reveal in Finder (folder) -------------------------------------------
+
+router.post("/pool/reveal", (req, res) => {
+  const Schema = z.object({ folder: z.string().optional() });
+  const parsed = Schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  let abs: string;
+  try {
+    abs = resolveFolder(parsed.data.folder ?? "");
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: errorMessage(err) });
+    return;
+  }
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ error: "folder not found" });
+    return;
+  }
+  try {
+    const child = spawn("open", [abs], { stdio: "ignore", detached: true });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // ignore — best-effort reveal
+  }
+  res.json({ ok: true, path: abs });
 });
 
 export default router;

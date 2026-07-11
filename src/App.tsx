@@ -20,6 +20,7 @@ import SettingsModal from "./views/SettingsModal";
 import OnboardingScreen from "./views/OnboardingScreen";
 import ToastHost from "./components/ToastHost";
 import ActivityPopover from "./components/ActivityPopover";
+import StemJobsIndicator from "./components/StemJobsIndicator";
 import {
   SaveStateIndicator,
   SaveStateProvider,
@@ -409,6 +410,10 @@ function AppInner() {
             </>
           )}
           <SaveStateIndicator />
+          <StemJobsIndicator
+            enabled={Boolean(health?.projectDirConfigured)}
+            configured={Boolean(health?.stemStudioConfigured)}
+          />
           <ActivityPopover openOnMount={openActivityOnMount} />
           <button
             className="rounded-md border border-ink-700 px-2 py-1 text-ink-300 hover:bg-ink-800"

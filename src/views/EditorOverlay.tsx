@@ -10,6 +10,8 @@ import {
   NamedRef,
   PoolItem,
   SampleFrame,
+  StemQuality,
+  StemStudioStatus,
   UnknownPerson,
   addCharacterRef,
   captionClip,
@@ -20,6 +22,7 @@ import {
   fetchDraft,
   fetchLibrary,
   fetchPoolClips,
+  fetchStemStudioStatus,
   formatTime,
   putDraft,
   reexportLibraryItem,
@@ -45,6 +48,26 @@ interface Props {
 }
 
 const ESTIMATED_FPS = 30;
+const STEM_QUALITY_STORAGE_KEY = "cowboy.stemQuality";
+
+function readStoredStemQuality(): StemQuality | null {
+  try {
+    const value = window.localStorage.getItem(STEM_QUALITY_STORAGE_KEY);
+    return value === "fast" || value === "high" || value === "max"
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistStemQuality(value: StemQuality): void {
+  try {
+    window.localStorage.setItem(STEM_QUALITY_STORAGE_KEY, value);
+  } catch {
+    // Preferences are best-effort.
+  }
+}
 
 /** Authoritative duration + in/out clamped for export / caption (matches timeline). */
 function exportRangeSeconds(
@@ -103,6 +126,20 @@ export default function EditorOverlay({
 
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
   const [exportMode, setExportMode] = useState<ExportMode>("clip");
+  const [initialStemPreference] = useState(() => {
+    const stored = readStoredStemQuality();
+    return {
+      quality: stored ?? ("fast" as StemQuality),
+      wasStored: Boolean(stored),
+    };
+  });
+  const [createStems, setCreateStems] = useState(false);
+  const [stemQuality, setStemQuality] = useState<StemQuality>(
+    initialStemPreference.quality
+  );
+  const [stemStudioStatus, setStemStudioStatus] =
+    useState<StemStudioStatus | null>(null);
+  const [stemStudioLoading, setStemStudioLoading] = useState(true);
   const [captioning, setCaptioning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -159,6 +196,47 @@ export default function EditorOverlay({
   useEffect(() => {
     reloadExistingClips();
   }, [reloadExistingClips]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStemStudioLoading(true);
+    fetchStemStudioStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setStemStudioStatus(status);
+        if (!initialStemPreference.wasStored && status.recommendedQuality) {
+          setStemQuality(status.recommendedQuality);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStemStudioStatus({
+          configured: false,
+          ready: false,
+          message:
+            "Stem Studio is not connected yet. Add its cloned repo folder in Settings.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setStemStudioLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialStemPreference.wasStored]);
+
+  useEffect(() => {
+    setCreateStems(false);
+  }, [source.id]);
+
+  useEffect(() => {
+    if (editingClipId) setCreateStems(false);
+  }, [editingClipId]);
+
+  const handleStemQuality = useCallback((quality: StemQuality) => {
+    setStemQuality(quality);
+    persistStemQuality(quality);
+  }, []);
 
   useEffect(() => {
     if (!initialEditClipId) return;
@@ -435,6 +513,11 @@ export default function EditorOverlay({
         : "Exporting…"
     );
     try {
+      const requestStems =
+        createStems &&
+        exportMode !== "source" &&
+        stemStudioStatus?.configured === true &&
+        stemStudioStatus.ready;
       const item = await exportClip({
         sourceId: source.id,
         in: expIn,
@@ -446,6 +529,7 @@ export default function EditorOverlay({
         scenes,
         objects,
         mode: exportMode,
+        ...(requestStems ? { stems: { quality: stemQuality } } : {}),
       });
       // Clean up the draft for this source — it just became a real clip.
       deleteDraft(source.id)
@@ -456,11 +540,22 @@ export default function EditorOverlay({
         .catch(() => {
           /* best-effort */
         });
-      setStatusMsg(`Exported as ${item.filename} (${item.mode})`);
+      const stemQueued =
+        item.stemJob?.status === "queued" || item.stemJob?.status === "running";
+      const stemError = item.stemJob?.status === "error";
+      setStatusMsg(
+        stemQueued
+          ? `Exported ${item.filename} · stems queued`
+          : `Exported as ${item.filename} (${item.mode})`
+      );
       fireToast({
         kind: "success",
-        title: "Clip exported",
-        body: `${item.filename} · ${item.mode}`,
+        title: stemQueued
+          ? "Clip exported · stem separation queued"
+          : "Clip exported",
+        body: stemQueued
+          ? `${item.filename} · ${stemQuality} quality`
+          : `${item.filename} · ${item.mode}`,
         action: {
           label: "Show in Finder",
           onClick: () => {
@@ -472,6 +567,14 @@ export default function EditorOverlay({
           },
         },
       });
+      if (stemError) {
+        fireToast({
+          kind: "warn",
+          title: "Clip exported; stems did not start",
+          body: item.stemJob?.error || "Check the Stem Studio connection.",
+        });
+      }
+      setCreateStems(false);
       await reloadExistingClips();
       onExported();
     } catch (err) {
@@ -492,6 +595,9 @@ export default function EditorOverlay({
     duration,
     source.duration,
     exportMode,
+    createStems,
+    stemQuality,
+    stemStudioStatus,
     source.id,
     editingClipId,
     reloadExistingClips,
@@ -841,7 +947,16 @@ export default function EditorOverlay({
           exporting={exporting}
           hasOpenAIKey={hasOpenAIKey}
           exportMode={exportMode}
-          onExportMode={setExportMode}
+          onExportMode={(mode) => {
+            setExportMode(mode);
+            if (mode === "source") setCreateStems(false);
+          }}
+          createStems={createStems}
+          onCreateStems={setCreateStems}
+          stemQuality={stemQuality}
+          onStemQuality={handleStemQuality}
+          stemStudioStatus={stemStudioStatus}
+          stemStudioLoading={stemStudioLoading}
           reexportMode={Boolean(editingClipId)}
         />
       </div>

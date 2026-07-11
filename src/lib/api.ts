@@ -2,6 +2,8 @@ export interface PoolItem {
   id: string;
   filename: string;
   path: string;
+  /** POSIX-separated relative folder under PROJECT_DIR; "" for root. */
+  folder: string;
   size: number;
   mtime: number;
   duration: number;
@@ -60,6 +62,36 @@ export interface Character {
 
 export type ExportMode = "clip" | "source" | "bundle";
 
+export type StemQuality = "fast" | "high" | "max";
+
+export interface StemStudioStatus {
+  configured: boolean;
+  ready: boolean;
+  device?: "cpu" | "mps" | "cuda";
+  recommendedQuality?: StemQuality;
+  message?: string;
+}
+
+export interface StemJobSummary {
+  id: string;
+  clipId: string;
+  clipName: string;
+  quality: StemQuality;
+  status:
+    | "queued"
+    | "running"
+    | "done"
+    | "error"
+    | "cancelled"
+    | "interrupted";
+  stage?: string;
+  percent: number;
+  outputDir?: string;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface NamedRef {
   id: string;
   name: string;
@@ -113,13 +145,18 @@ export interface OrphanFile {
 
 export interface HealthResponse {
   ok: boolean;
+  service?: "clipper-cowboy";
+  apiVersion?: number;
   projectDir: string;
   clipsDir: string;
   charactersDir: string;
   imagesDir?: string;
+  derivedDir?: string;
+  stemsDir?: string;
   shotlistMd: string;
   shotlistCsv: string;
   hasOpenAIKey: boolean;
+  stemStudioConfigured?: boolean;
   /** False on first run — UI renders the onboarding wizard when false. */
   projectDirConfigured: boolean;
 }
@@ -140,6 +177,7 @@ export async function checkFsPath(p: string): Promise<FsCheckResponse> {
 export async function saveSettings(input: {
   projectDir?: string;
   openaiApiKey?: string;
+  stemStudioRoot?: string;
 }): Promise<{ ok: boolean; note?: string }> {
   return jsonOrThrow(
     await fetch("/api/settings", {
@@ -500,14 +538,35 @@ export interface ExportPayload {
   scenes: NamedRef[];
   objects: NamedRef[];
   mode: ExportMode;
+  stems?: { quality: StemQuality };
 }
 
-export async function exportClip(payload: ExportPayload): Promise<LibraryItem> {
+export interface ExportResult extends LibraryItem {
+  stemJob?: StemJobSummary;
+}
+
+export async function exportClip(payload: ExportPayload): Promise<ExportResult> {
   return jsonOrThrow(
     await fetch("/api/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function fetchStemStudioStatus(): Promise<StemStudioStatus> {
+  return jsonOrThrow(await fetch("/api/stem-studio/status"));
+}
+
+export async function fetchStemJobs(): Promise<{ items: StemJobSummary[] }> {
+  return jsonOrThrow(await fetch("/api/stem-jobs"));
+}
+
+export async function cancelStemJob(id: string): Promise<StemJobSummary> {
+  return jsonOrThrow(
+    await fetch(`/api/stem-jobs/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
     })
   );
 }
@@ -537,6 +596,117 @@ export async function fetchPoolClipsSummary(): Promise<
   Record<string, PoolClipsSummaryEntry>
 > {
   return jsonOrThrow(await fetch("/api/pool/clips-summary"));
+}
+
+// ---- Pool folders + move + auto-organize ---------------------------------
+
+export async function fetchPoolFolders(): Promise<{ folders: string[] }> {
+  return jsonOrThrow(await fetch("/api/pool/folders"));
+}
+
+export async function createPoolFolder(
+  folderPath: string
+): Promise<{ ok: boolean; folder: string }> {
+  return jsonOrThrow(
+    await fetch("/api/pool/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: folderPath }),
+    })
+  );
+}
+
+export async function deletePoolFolder(
+  folderPath: string
+): Promise<{ ok: boolean }> {
+  return jsonOrThrow(
+    await fetch("/api/pool/folders", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: folderPath }),
+    })
+  );
+}
+
+export interface PoolMoveResult {
+  oldId: string;
+  newId: string;
+  oldPath: string;
+  newPath: string;
+  folder: string;
+  filename: string;
+  sidecarsUpdated: number;
+  draftsRekeyed: number;
+}
+
+export async function movePoolSource(
+  id: string,
+  folderPath: string
+): Promise<PoolMoveResult> {
+  return jsonOrThrow(
+    await fetch(`/api/pool/${id}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: folderPath }),
+    })
+  );
+}
+
+export async function movePoolSources(
+  ids: string[],
+  folderPath: string
+): Promise<{
+  items: PoolMoveResult[];
+  errors: { id: string; error: string }[];
+}> {
+  return jsonOrThrow(
+    await fetch("/api/pool/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, folder: folderPath }),
+    })
+  );
+}
+
+export async function revealPoolFolder(
+  folderPath: string
+): Promise<{ ok: boolean; path: string }> {
+  return jsonOrThrow(
+    await fetch("/api/pool/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: folderPath }),
+    })
+  );
+}
+
+export interface PoolFolderSuggestion {
+  folder: string;
+  setting: string;
+  timeOfDay: string;
+  characters: string[];
+  confidence: "low" | "med" | "high";
+}
+
+export interface PoolAnalyzeRow {
+  id: string;
+  filename: string;
+  currentFolder: string;
+  duration: number;
+  suggested: PoolFolderSuggestion | null;
+  error?: string;
+}
+
+export async function analyzePoolContent(
+  ids: string[]
+): Promise<{ suggestions: PoolAnalyzeRow[] }> {
+  return jsonOrThrow(
+    await fetch("/api/pool/analyze-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    })
+  );
 }
 
 export interface ReexportPayload {
@@ -774,7 +944,11 @@ export type ActivityKind =
   | "orphans_trashed"
   | "clips_copied"
   | "clip_renamed"
-  | "clips_sent_to_premiere";
+  | "clips_sent_to_premiere"
+  | "source_analyzed"
+  | "source_batch_started"
+  | "pool_source_moved"
+  | "pool_organize_analyzed";
 
 export interface ActivityEvent {
   ts: number;

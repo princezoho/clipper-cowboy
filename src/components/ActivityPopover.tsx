@@ -199,6 +199,10 @@ const ICON: Record<ActivityKind, string> = {
   clips_copied: "📋",
   clip_renamed: "✎",
   clips_sent_to_premiere: "▶",
+  source_analyzed: "🤖",
+  source_batch_started: "🤖",
+  pool_source_moved: "📂",
+  pool_organize_analyzed: "🤖",
 };
 
 function describeEvent(event: ActivityEvent): {

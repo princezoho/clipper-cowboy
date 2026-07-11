@@ -9,6 +9,7 @@ interface Props {
 export default function SettingsModal({ current, onClose }: Props) {
   const [projectDir, setProjectDir] = useState(current.projectDir);
   const [apiKey, setApiKey] = useState("");
+  const [stemStudioRoot, setStemStudioRoot] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,9 @@ export default function SettingsModal({ current, onClose }: Props) {
     try {
       const body: Record<string, string> = { projectDir };
       if (apiKey.trim()) body.openaiApiKey = apiKey.trim();
+      if (stemStudioRoot.trim()) {
+        body.stemStudioRoot = stemStudioRoot.trim();
+      }
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,6 +116,26 @@ export default function SettingsModal({ current, onClose }: Props) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={current.hasOpenAIKey ? "(unchanged)" : "sk-..."}
+            />
+          </Field>
+
+          <Field
+            label="Stem Studio folder"
+            hint={
+              current.stemStudioConfigured
+                ? "Connected. Change this only to use a different Stem Studio clone. Restart after saving."
+                : "Optional. Select the cloned wassermanproductions/stem-studio folder to enable background stems on export. No API key is needed."
+            }
+          >
+            <input
+              className="w-full rounded bg-ink-800 px-2 py-1.5 font-mono text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
+              value={stemStudioRoot}
+              onChange={(e) => setStemStudioRoot(e.target.value)}
+              placeholder={
+                current.stemStudioConfigured
+                  ? "(connected — leave blank to keep)"
+                  : "/Users/you/Projects/stem-studio"
+              }
             />
           </Field>
 

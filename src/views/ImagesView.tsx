@@ -27,7 +27,12 @@ import {
 import { fireToast } from "../lib/toast";
 import FieldStatus from "../components/FieldStatus";
 import ChipPicker from "../components/ChipPicker";
+import CategorySelect from "../components/CategorySelect";
 import { useDebouncedAutosave } from "../lib/useDebouncedAutosave";
+import {
+  imagePreviewAspectRatio,
+  imagePreviewObjectFit,
+} from "../lib/imagePreview";
 
 interface Props {
   items: ImageItem[];
@@ -1447,10 +1452,13 @@ function ImageCard({
     }
   }
 
+  const previewFit = imagePreviewObjectFit(item);
+  const previewAspect = imagePreviewAspectRatio(item);
+
   return (
     <div
       className={
-        "relative flex flex-col overflow-hidden rounded-xl border bg-ink-900 transition " +
+        "relative flex flex-col overflow-visible rounded-xl border bg-ink-900 transition " +
         (selectionMode && isSelected
           ? "border-accent-500 ring-2 ring-accent-500/50"
           : "border-ink-800")
@@ -1474,14 +1482,18 @@ function ImageCard({
       <button
         type="button"
         onClick={selectionMode ? onToggleSelected : onPreview}
-        className="relative aspect-[4/3] overflow-hidden bg-ink-950"
+        className="relative w-full max-h-56 overflow-hidden rounded-t-xl bg-ink-950"
+        style={{ aspectRatio: previewAspect }}
         title={selectionMode ? "Toggle selection" : "Open lightbox"}
       >
         <img
           src={item.thumbUrl}
           loading="lazy"
           alt={item.name}
-          className="h-full w-full object-cover transition hover:scale-[1.02]"
+          className={
+            "h-full w-full transition hover:scale-[1.02] " +
+            (previewFit === "contain" ? "object-contain" : "object-cover")
+          }
         />
         {category !== "" && (
           <span
@@ -1514,18 +1526,10 @@ function ImageCard({
             />
           }
         >
-          <select
-            className="w-full rounded bg-ink-800 px-2 py-1 text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
+          <CategorySelect
             value={category}
-            onChange={(e) => setCategory(e.target.value as ImageCategory)}
-          >
-            <option value="">Uncategorized</option>
-            {IMAGE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_LABEL[c]}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setCategory(v)}
+          />
         </FieldRow>
 
         <FieldRow
