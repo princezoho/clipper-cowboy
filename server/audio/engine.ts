@@ -242,6 +242,7 @@ export class AudioEngineManager {
       let bytes = 0;
       let buffered = "";
       let workerError = "";
+      let stderr = "";
       const output = (chunk: Buffer) => {
         bytes += chunk.length;
         if (bytes > MAX_OUTPUT_BYTES) child.kill("SIGTERM");
@@ -257,14 +258,21 @@ export class AudioEngineManager {
         }
       };
       child.stdout.on("data", output);
-      child.stderr.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes > MAX_OUTPUT_BYTES) child.kill("SIGTERM"); });
+      child.stderr.on("data", (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > MAX_OUTPUT_BYTES) child.kill("SIGTERM");
+        stderr = (stderr + chunk.toString("utf8")).slice(-4_096);
+      });
       const timer = setTimeout(() => child.kill("SIGTERM"), SEPARATION_TIMEOUT_MS);
       child.once("error", () => { clearTimeout(timer); reject(new Error("The local audio engine could not start.")); });
       child.once("close", (code) => {
         clearTimeout(timer);
         if (bytes > MAX_OUTPUT_BYTES) reject(new Error("The local audio engine produced too much output."));
         else if (code === 0) resolve();
-        else reject(new Error(`audio engine worker failed${workerError ? `: ${workerError}` : ""}`));
+        else {
+          const diagnostic = workerError || safeWorkerDiagnostic(stderr);
+          reject(new Error(`audio engine worker failed${diagnostic ? `: ${diagnostic}` : ""}`));
+        }
       });
     });
   }

@@ -11,6 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(path.join(root, "package.json"));
 const productionEngine = fs.readFileSync(path.join(root, "server", "audio", "engine.ts"), "utf8");
 const worker = fs.readFileSync(path.join(root, "server", "audio", "stemstudio_worker", "separate.py"), "utf8");
+const ffmpeg = require("ffmpeg-static");
 if (productionEngine.includes('"stub"') || worker.includes('choices=["stub"]')) {
   throw new Error("Production audio arguments must not select the stub engine.");
 }
@@ -32,13 +33,12 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$out"
-ffmpeg -y -hide_banner -loglevel error -i "$input" -vn -c:a pcm_s16le "$out/dialogue.wav"
+"${ffmpeg}" -y -hide_banner -loglevel error -i "$input" -vn -c:a pcm_s16le "$out/dialogue.wav"
 cp "$out/dialogue.wav" "$out/music.wav"
 cp "$out/dialogue.wav" "$out/effects.wav"
 `);
 fs.chmodSync(fakePython, 0o755);
 
-const ffmpeg = require("ffmpeg-static");
 const fixture = path.join(project, "source.mp4");
 const generated = spawnSync(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:d=1", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", fixture]);
 if (generated.status !== 0) throw new Error("Could not create audio smoke fixture.");
@@ -80,7 +80,16 @@ try {
     if (job.status === "done" || job.status === "error") break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  if (job?.status !== "done") throw new Error(`Audio job failed: ${job?.error ?? "unknown"}`);
+  if (job?.status !== "done") {
+    // Job diagnostics deliberately stay out of the API. This test owns its
+    // temporary project, so it can surface the already-sanitized local record.
+    let diagnostic;
+    try {
+      const jobs = JSON.parse(fs.readFileSync(path.join(project, ".clipcataloger", "stem-jobs.json"), "utf8"));
+      diagnostic = jobs.find((item) => item.id === exported.stemJob.id)?.diagnostic;
+    } catch {}
+    throw new Error(`Audio job failed: ${job?.error ?? "unknown"}${diagnostic ? ` (${diagnostic})` : ""}`);
+  }
   // Completion responses intentionally do not expose filesystem paths. The
   // smoke fixture's fixed local project lets this test inspect the fixed,
   // validated stems destination directly.
