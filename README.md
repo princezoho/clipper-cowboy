@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="./public/logo.png" alt="Clipper Cowboy logo: a cowboy hat over a film clip" width="120" />
+  <img src="./public/app-icon.png" alt="Clipper Cowboy logo: a cowboy hat over a film clip" width="120" />
 </p>
 
 # Clipper Cowboy
 
-> Build a living shot library for your characters, worlds, and stories.
+> Keep every good shot in the world you’re building.
 
-When you are building an IP, good moments cannot disappear into a pile of raw
-generations. Clipper Cowboy turns those montages into a local, searchable
-library of ready-to-use shots—organized around the characters, scenes, objects,
-and visual language you are building.
+Clipper Cowboy turns a growing pile of AI-generated montages into reusable
+coverage for your characters, scenes, and objects. When the next episode,
+trailer, social cut, or pitch needs a shot, your world is ready to search—not
+lost in raw video.
 
 <p align="center">
   <img src="./docs/screenshots/landing-pool.png" alt="Clipper Cowboy's Pool view for reviewing video montages" width="90%" />
@@ -17,56 +17,60 @@ and visual language you are building.
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#how-it-fits-into-your-production">Production workflow</a> ·
-  <a href="#privacy-and-security">Privacy</a> ·
+  <a href="#from-raw-generations-to-a-usable-world">See the workflow</a> ·
+  <a href="#mcp-and-supporting-capabilities">MCP</a> ·
   <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
 
-| Review | Edit | Configure |
-| --- | --- | --- |
-| ![Pool view showing sources ready for review](./docs/screenshots/landing-pool.png) | ![Editor view with clip range and metadata controls](./docs/screenshots/editor-clip-range.png) | ![Settings view showing local security controls](./docs/screenshots/settings-security.png) |
+## From raw generations to a usable world
 
-## Build an IP, not another pile of files
+### 1. Feed the Pool
+Montages arrive in one review surface. See what has already produced clips,
+what still needs attention, and return to a source without losing your place.
 
-- **Keep your cast and world available.** Tag clips with recurring characters,
-  scenes, objects, and descriptive tags so a specific hero, saloon, prop, or
-  background is always findable when you need another shot.
-- **Turn generations into usable coverage.** Review long montage videos, carve
-  out the seconds that work, and save them as named clips instead of trying to
-  remember which source file held the good take.
-- **Stay ready to make the next edit.** Search, filter, preview, and export a
-  collection of matching shots for Premiere or another NLE—without rebuilding
-  the same selects every time.
+### 2. Save the good moments
+Set precise in and out points, keep drafts as you work, and export named clips.
+Each good moment becomes coverage you can use again instead of a memory of a
+source file.
 
-## What Clipper Cowboy does
+### 3. Teach the library your world
+Connect clips to recurring characters, scenes, objects, tags, and reference
+images. Optional AI can help with cataloging, but you decide what belongs in
+the world.
 
-### 1. Make selects from a growing source pool
-- Scan a project folder of AI-generated source montages in one focused Pool.
-- Set frame-accurate in/out points and see already-clipped regions on the
-  source timeline, so you know what you have saved and what remains.
-- Auto-save drafts so a 30-minute source can be cataloged over days instead of
-  finished in one sitting.
+### 4. Pull coverage for the next edit
+Filter the library for the shots a cut needs, then preview and export the set
+to Premiere or another NLE.
 
-### 2. Build a library around your world
-- Give every keeper a name, description, tags, characters, scenes, and objects.
-- Use reference images and optional AI assistance to keep recurring characters
-  and visual settings consistently cataloged.
-- Search or combine filters: “this character in this location with this prop”
-  becomes a usable set of clips, not an excavation through folders.
+## Never lose a good shot again
 
-### 3. Pull the right shots into the next piece
-- Preview clips inline, select a set, and hand it to Premiere or export a
-  curated NLE-ready folder or zip.
-- Keep your stock of character, environment, action, and transition shots
-  ready for the next episode, trailer, social cut, or pitch.
-- Stream-copy keyframe-aligned interiors where possible; short trim edges may
-  be losslessly re-encoded to preserve precise cuts.
+The Pool above is your intake for a living library: a growing set of source
+montages with clip counts, draft status, and saved regions visible at a glance.
+Review only the material that still needs a decision; come back tomorrow and
+continue from the same source.
 
-### 4. Use AI as an assistant, not the owner
-- Optional OpenAI-assisted labels and reference-frame recognition help with
-  cataloging; you keep the final decision on every select and export.
-- The app stays useful with no API key, and all media plus catalog sidecars stay
-  in your project folder.
+## Build a cast, not a tag pile
+
+![Editor view showing precise clip range controls and character, scene, object, name, description, and tag fields](./docs/screenshots/editor-clip-range.png)
+
+A keeper can carry a character, a scene, an object, a name, and the context
+that makes it usable later. Reference images help ground recurring people and
+places; descriptive tags add the details. The result is a cast and a world you
+can query, not a flat list of filenames.
+
+## Start the next edit with coverage
+
+Ask for a combination that matters to the cut, then collect the matching clips
+instead of reopening every montage. For example, a catalog query might look
+like:
+
+```text
+Character: Montoya + Scene: desert + Tag: horseback → 12 ready clips
+```
+
+That is a representative query, not a claim about your catalog. The point is
+to make character, location, prop, action, and transition coverage available
+when the next edit starts.
 
 ## Quick start
 
@@ -105,14 +109,12 @@ dependencies when needed, builds stale UI assets, starts the local server, and
 opens the browser. If Gatekeeper prompts, right-click the file and choose
 **Open**. This convenience behavior is not a cross-platform installer.
 
-## How it fits into your production
+## MCP and supporting capabilities
 
-Clipper Cowboy is the visual memory for a project: the place where your best
-shots become organized building blocks instead of one-off generations. The
-browser UI is for hands-on review, cataloging, and selection. The included local
-MCP server can also let Codex and other compatible agents inspect sources,
-search clips, update metadata, export clips, and request explicitly confirmed
-OpenAI analysis. Start with the [MCP guide](./mcp/README.md).
+Clipper Cowboy's browser UI is the home for hands-on review, cataloging, and
+selection. The included local MCP server can also let Codex and other compatible
+agents inspect sources, search clips, update metadata, export clips, and request
+explicitly confirmed OpenAI analysis. Start with the [MCP guide](./mcp/README.md).
 
 Audio splitting is a built-in local capability. Its managed worker is adapted
 from [Stem Studio](https://github.com/wassermanproductions/stem-studio) source;

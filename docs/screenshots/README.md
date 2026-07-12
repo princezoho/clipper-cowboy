@@ -14,3 +14,14 @@ customer content, or private media.
 If an existing screenshot exposes personal absolute paths or other private
 context, do not reuse or replace it with real content. Prepare a sanitized demo
 capture before publishing it.
+
+## Screenshots to add
+
+To strengthen the public landing page, capture these sanitized demo views:
+
+- **Library filters** — a clear query across character, scene, object, or tag
+  with matching ready-to-use clips.
+- **AI organize review** — optional suggestions shown as reviewable, not
+  automatic decisions.
+- **Images organization** — reference images connected to recurring characters,
+  scenes, or objects.
