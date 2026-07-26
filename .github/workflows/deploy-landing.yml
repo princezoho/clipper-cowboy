@@ -1,10 +1,14 @@
 name: Deploy landing site
 
-# Publishes the static site/ folder to GitHub Pages. Requires a one-time
-# account action first: repository Settings > Pages > Source = GitHub Actions.
-# Until that is set, this workflow fails at the Configure Pages step.
+# Publishes the static site/ folder to GitHub Pages. Pages is enabled on this
+# repository with Settings > Pages > Source = GitHub Actions, so no account
+# action is outstanding.
 #
-# The site currently targets the default Pages address,
+# Every push to main that touches site/ deploys. The path filter keeps app and
+# server commits from queueing a Pages deployment that would publish identical
+# bytes. Use Run workflow when you need to republish without a site/ change.
+#
+# The site is live at the default Pages address,
 # https://princezoho.github.io/clipper-cowboy/.
 #
 # To move to clippercowboy.jejestudios.com later:
@@ -16,6 +20,10 @@ name: Deploy landing site
 # elsewhere breaks the working default Pages URL.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
   workflow_dispatch:
 
 # Least privilege for a Pages deployment: read the repo, mint an OIDC token,

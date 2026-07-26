@@ -14,16 +14,23 @@
     <meta property="og:site_name" content="Clipper Cowboy" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://princezoho.github.io/clipper-cowboy/" />
-    <!-- Social crawlers get the PNG, not the WebP: several still refuse WebP
-         cards. It is the same file that serves as the in-page fallback. -->
-    <meta property="og:image" content="https://princezoho.github.io/clipper-cowboy/media/hero-pool.png" />
-    <meta property="og:image:width" content="3200" />
-    <meta property="og:image:height" content="2000" />
-    <meta property="og:image:alt" content="Clipper Cowboy Pool view showing a grid of source clips ready to review." />
+    <!-- Purpose-built 1200x630 card rather than a product screenshot: every
+         network here crops to 1.91:1, and the full Pool grid was illegible at
+         feed size. media/og-card.html is the source, media/og-card.png the
+         lossless export, and the JPEG below is what crawlers fetch because it
+         is a third of the weight with no visible difference. Absolute URLs are
+         required: crawlers do not resolve relative image paths. -->
+    <meta property="og:image" content="https://princezoho.github.io/clipper-cowboy/media/og-card.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Clipper Cowboy card reading Turn generations into coverage, beside a close crop of the Pool grid showing clip tiles with their coverage marked." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Clipper Cowboy | Turn generations into coverage" />
     <meta name="twitter:description" content="A local-first shot library for generated footage. Save selects, tag coverage, and find the right clip for the next edit." />
-    <meta name="twitter:image" content="https://princezoho.github.io/clipper-cowboy/media/hero-pool.png" />
+    <meta name="twitter:url" content="https://princezoho.github.io/clipper-cowboy/" />
+    <meta name="twitter:image" content="https://princezoho.github.io/clipper-cowboy/media/og-card.jpg" />
+    <meta name="twitter:image:alt" content="Clipper Cowboy card reading Turn generations into coverage, beside a close crop of the Pool grid showing clip tiles with their coverage marked." />
     <link rel="preload" href="./media/fonts/Wantedo.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./media/fonts/Garamond.woff2" as="font" type="font/woff2" crossorigin />
     <!-- The hero screenshot is the largest contentful paint. Browsers without
