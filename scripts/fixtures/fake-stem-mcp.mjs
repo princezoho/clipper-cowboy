@@ -11,6 +11,7 @@ if (process.env.OPENAI_API_KEY || process.env.CLIPPER_API_TOKEN) {
 
 let separation = null;
 let checks = 0;
+const setupRequired = process.argv.includes("--setup-required");
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -88,7 +89,28 @@ lines.on("line", (line) => {
   const name = message.params?.name;
   const args = message.params?.arguments ?? {};
   if (name === "setup_status") {
-    setTimeout(() => reply(tool({ ready: true, device: "cpu" })), 3_000);
+    setTimeout(
+      () =>
+        reply(
+          tool(
+            setupRequired
+              ? {
+                  ready: false,
+                  pythonExists: false,
+                  depsImportable: false,
+                  modelCachePresent: false,
+                }
+              : {
+                  ready: true,
+                  pythonExists: true,
+                  depsImportable: true,
+                  modelCachePresent: true,
+                  device: "cpu",
+                }
+          )
+        ),
+      20
+    );
   } else if (name === "probe_media") {
     reply(tool({ has_video: true, duration: 1 }));
   } else if (name === "separate_stems") {

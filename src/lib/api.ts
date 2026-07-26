@@ -368,6 +368,272 @@ export async function sendLibraryToPremiere(
   );
 }
 
+export type UniversalStemRole = "DIALOGUE" | "MUSIC" | "SFX" | "MARRIED";
+
+export interface UniversalPlannedStem {
+  groupId: string;
+  sourceId: string;
+  clipId: string | null;
+  stemRole: UniversalStemRole;
+  inSeconds: number;
+  outSeconds: number | null;
+  filename: string;
+  status: "existing-if-validated" | "planned-handoff";
+}
+
+export interface UniversalPlan {
+  schema: string;
+  packageName: string;
+  destinationRoot: string;
+  selectedClipCount: number;
+  sourceCount: number;
+  mediaDirectory: "media";
+  expectedAssetCount: number;
+  sources: {
+    sourceId: string;
+    sourceFilename: string;
+    fullSourceFilename: string;
+    groupId: string;
+    stems: UniversalPlannedStem[];
+    clips: {
+      clipId: string;
+      name: string;
+      inSeconds: number;
+      outSeconds: number;
+      durationSeconds: number;
+      outputFilename: string;
+      groupId: string;
+      stems: UniversalPlannedStem[];
+      qualityMethod: "adaptive-smart-cut";
+      qualityNote: string;
+    }[];
+  }[];
+  stemExecution: {
+    roles: UniversalStemRole[];
+    behavior: string;
+    confirmationRequired: true;
+  };
+}
+
+export interface UniversalPackageJob {
+  id: string;
+  status: "queued" | "running" | "done" | "cancelled" | "error";
+  stage: string;
+  percent: number;
+  completed: number;
+  total: number;
+  plan: UniversalPlan;
+  folder?: string;
+  manifestPath?: string;
+  packageId?: string;
+  error?: string;
+}
+
+export type UniversalStemQuality = "high" | "max";
+export type UniversalStemExecutionStatus =
+  | "not_requested"
+  | "queued"
+  | "checking_setup"
+  | "running"
+  | "validating"
+  | "ready"
+  | "setup_required"
+  | "cancelled"
+  | "interrupted"
+  | "error";
+
+export interface UniversalStemJob {
+  id: string;
+  packageId: string;
+  quality: UniversalStemQuality;
+  status: Exclude<UniversalStemExecutionStatus, "not_requested">;
+  stage: string;
+  percent: number;
+  message: string;
+  externalJobId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UniversalStemConnectorStatus {
+  state:
+    | "not_configured"
+    | "unavailable"
+    | "setup_required"
+    | "ready"
+    | "live_fixture_verified";
+  configured: boolean;
+  connected: boolean;
+  ready: boolean;
+  setupRequired: boolean;
+  liveFixtureVerified: boolean;
+  message: string;
+  entry: string | null;
+  version: string | null;
+  configuredBy: "settings" | "environment" | null;
+  qualities: UniversalStemQuality[];
+  setupAutomatic: false;
+}
+
+export interface UniversalPackageSummary {
+  packageId: string;
+  packageName: string;
+  createdAt: string;
+  packageStatus:
+    | "preparing"
+    | "stems_pending"
+    | "setup_required"
+    | "stem_error"
+    | "ready";
+  premiereReady: boolean;
+  stemExecution: {
+    status: UniversalStemExecutionStatus;
+    quality: UniversalStemQuality | null;
+    jobId: string | null;
+    stage: string;
+    percent: number;
+    message: string;
+    updatedAt: string;
+  };
+  counts: {
+    groups: number;
+    assets: number;
+    ready: number;
+    pending: number;
+    invalid: number;
+  };
+}
+
+export async function previewUniversalPackage(
+  ids: string[],
+  name: string
+): Promise<UniversalPlan> {
+  return jsonOrThrow(
+    await fetch("/api/universal-clipper/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, name }),
+    })
+  );
+}
+
+export async function prepareUniversalPackage(
+  ids: string[],
+  name: string
+): Promise<UniversalPackageJob> {
+  return jsonOrThrow(
+    await fetch("/api/universal-clipper/packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, name }),
+    })
+  );
+}
+
+export async function fetchUniversalPackageJob(
+  id: string
+): Promise<UniversalPackageJob> {
+  return jsonOrThrow(
+    await fetch(`/api/universal-clipper/jobs/${encodeURIComponent(id)}`)
+  );
+}
+
+export async function cancelUniversalPackageJob(
+  id: string
+): Promise<UniversalPackageJob> {
+  return jsonOrThrow(
+    await fetch(`/api/universal-clipper/jobs/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function revealUniversalPackage(
+  id: string
+): Promise<{ ok: true; folder: string }> {
+  return jsonOrThrow(
+    await fetch(`/api/universal-clipper/jobs/${encodeURIComponent(id)}/reveal`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function fetchUniversalStemConnectorStatus(): Promise<UniversalStemConnectorStatus> {
+  return jsonOrThrow(
+    await fetch("/api/universal-clipper/stem-connector/status")
+  );
+}
+
+export async function configureUniversalStemConnector(
+  entry: string
+): Promise<UniversalStemConnectorStatus> {
+  return jsonOrThrow(
+    await fetch("/api/universal-clipper/stem-connector/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entry }),
+    })
+  );
+}
+
+export async function clearUniversalStemConnector(): Promise<UniversalStemConnectorStatus> {
+  return jsonOrThrow(
+    await fetch("/api/universal-clipper/stem-connector/config", {
+      method: "DELETE",
+    })
+  );
+}
+
+export async function separateUniversalPackageStems(
+  packageId: string,
+  quality: UniversalStemQuality,
+  confirmedMaxLicense = false
+): Promise<UniversalStemJob> {
+  return jsonOrThrow(
+    await fetch(
+      `/api/universal-clipper/packages/${encodeURIComponent(packageId)}/stems`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quality,
+          confirmedModelExecution: true,
+          ...(quality === "max" && confirmedMaxLicense
+            ? { confirmedMaxLicense: true }
+            : {}),
+        }),
+      }
+    )
+  );
+}
+
+export async function fetchUniversalStemJob(
+  id: string
+): Promise<UniversalStemJob> {
+  return jsonOrThrow(
+    await fetch(
+      `/api/universal-clipper/stem-jobs/${encodeURIComponent(id)}`
+    )
+  );
+}
+
+export async function cancelUniversalStemJob(
+  id: string
+): Promise<UniversalStemJob> {
+  return jsonOrThrow(
+    await fetch(
+      `/api/universal-clipper/stem-jobs/${encodeURIComponent(id)}/cancel`,
+      { method: "POST" }
+    )
+  );
+}
+
+export async function listUniversalPackages(): Promise<{
+  items: UniversalPackageSummary[];
+}> {
+  return jsonOrThrow(await fetch("/api/universal-clipper/packages"));
+}
+
 // ---- Images library -------------------------------------------------------
 
 export type ImageCategory =
@@ -1009,7 +1275,8 @@ export type ActivityKind =
   | "source_analyzed"
   | "source_batch_started"
   | "pool_source_moved"
-  | "pool_organize_analyzed";
+  | "pool_organize_analyzed"
+  | "universal_package_created";
 
 export interface ActivityEvent {
   ts: number;
@@ -1021,6 +1288,333 @@ export async function fetchActivity(
   limit = 10
 ): Promise<{ events: ActivityEvent[] }> {
   return jsonOrThrow(await fetch(`/api/activity?limit=${limit}`));
+}
+
+// ---- Clipper Roundup (rename/move history) --------------------------------
+
+export type RoundupEntityType = "pool" | "library" | "image" | "other";
+
+export type RoundupKind =
+  | "pool_move"
+  | "library_rename"
+  | "image_move"
+  | "clip_restore"
+  | "orphan_trash"
+  | "manual"
+  | "external_detected";
+
+export interface RoundupFingerprint {
+  size: number;
+  mtimeMs: number;
+  ino?: number;
+  dev?: number;
+}
+
+export type RoundupEventClassification =
+  | "renamed_and_moved"
+  | "renamed"
+  | "moved"
+  | "derived_copy"
+  | "unknown";
+
+export interface RoundupEventPresentation {
+  classification: RoundupEventClassification;
+  oldName: string | null;
+  newName: string | null;
+  oldFolder: string | null;
+  newFolder: string | null;
+  nameChanged: boolean;
+  folderChanged: boolean;
+  extensionChanged: boolean;
+}
+
+export interface RoundupEvent {
+  ts: number;
+  kind: RoundupKind;
+  entityType: RoundupEntityType;
+  oldPath: string;
+  newPath: string;
+  oldName?: string;
+  newName?: string;
+  oldId?: string;
+  newId?: string;
+  tagId?: string;
+  triggeredBy: string;
+  fingerprint?: RoundupFingerprint;
+  exists?: boolean;
+  classification?: RoundupEventClassification;
+  presentation?: RoundupEventPresentation;
+}
+
+export interface RoundupTag {
+  id: string;
+  trackable: boolean;
+  currentPath: string;
+  fingerprint?: RoundupFingerprint;
+  createdAt: number;
+  updatedAt: number;
+  paths: string[];
+}
+
+export interface RoundupCandidate {
+  event: RoundupEvent;
+  match: "exact_path" | "path_prefix" | "basename" | "fingerprint" | "tag";
+  currentPath: string;
+  currentExists: boolean;
+  score: number;
+  history: RoundupEvent[];
+  trail: string[];
+  tag?: RoundupTag;
+}
+
+export type RoundupWatchRootId = string;
+
+export type RoundupRootReason =
+  | "project"
+  | "seedance"
+  | "gunslinger_dropbox"
+  | "gunslinger_seedance"
+  | "downloads"
+  | "desktop"
+  | "documents"
+  | "pictures"
+  | "movies"
+  | "music"
+  | "droplet";
+
+export interface RoundupWatchRoot {
+  id: RoundupWatchRootId;
+  label: string;
+  path: string;
+  reason: RoundupRootReason;
+  exists: boolean;
+  enabled: boolean;
+  allowed: boolean;
+  inventoryEligible: boolean;
+  watchNote?: "inventory_only" | "covered_by_parent";
+}
+
+export interface RoundupWatcherStatus {
+  state: "off" | "starting" | "watched" | "degraded";
+  running: boolean;
+  enabled: boolean;
+  roots: RoundupWatchRoot[];
+  watching: string[];
+  coveredRootIds: RoundupWatchRootId[];
+  backend: "fsevents" | "fs.watch";
+  cachedPaths: number;
+  pendingUnlinks: number;
+  eventsRecordedSession: number;
+  lastError: string | null;
+  lastEventAt: number | null;
+}
+
+export async function fetchRoundup(
+  limit = 50
+): Promise<{ events: RoundupEvent[] }> {
+  return jsonOrThrow(await fetch(`/api/roundup?limit=${limit}`));
+}
+
+export async function lookupRoundup(input: {
+  q?: string;
+  path?: string;
+  basename?: string;
+  limit?: number;
+}): Promise<{ candidates: RoundupCandidate[] }> {
+  const params = new URLSearchParams();
+  if (input.q) params.set("q", input.q);
+  if (input.path) params.set("path", input.path);
+  if (input.basename) params.set("basename", input.basename);
+  if (input.limit) params.set("limit", String(input.limit));
+  return jsonOrThrow(await fetch(`/api/roundup/lookup?${params}`));
+}
+
+export async function fetchRoundupWatcher(): Promise<RoundupWatcherStatus> {
+  return jsonOrThrow(await fetch("/api/roundup/watcher"));
+}
+
+export async function updateRoundupWatcher(input: {
+  enabled?: boolean;
+  root?: { id: RoundupWatchRootId; enabled: boolean };
+}): Promise<RoundupWatcherStatus> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/watcher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function approveRoundupRoot(input: {
+  path: string;
+  label: string;
+  reason: "seedance" | "droplet" | "gunslinger_dropbox" | "gunslinger_seedance";
+  approved: true;
+}): Promise<RoundupWatcherStatus> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/roots/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export interface RoundupManifestItem {
+  source: string;
+  identity: string;
+  mediaKind: "video" | "image" | "audio";
+  intendedExportDestination: string;
+  collisionPolicy: "allocate-unique-never-overwrite";
+  stemsEligible: boolean;
+  sourceRootId: string;
+  sourceRootReason: RoundupRootReason;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface RoundupInventoryJob {
+  id: string;
+  status: "queued" | "running" | "paused" | "done" | "cancelled" | "error";
+  scanned: number;
+  mediaCandidates: number;
+  discovered: number;
+  tagged: number;
+  alreadyTagged: number;
+  totalBytes: number;
+  skipped: number;
+  placeholderSkips: number;
+  errors: number;
+  complete: boolean;
+  capped: boolean;
+  limit: number;
+  rootIds: string[];
+  items: RoundupManifestItem[];
+  startedAt: number;
+  updatedAt: number;
+  checkpoint: {
+    rootIndex: number;
+    directories: { relativeDir: string; afterName: string | null }[];
+  };
+  error?: string;
+}
+
+export async function startRoundupInventory(input: {
+  rootIds: string[];
+  limit: number;
+}): Promise<RoundupInventoryJob> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function fetchRoundupInventory(id: string): Promise<RoundupInventoryJob> {
+  return jsonOrThrow(await fetch(`/api/roundup/inventory/${encodeURIComponent(id)}`));
+}
+
+export async function cancelRoundupInventory(id: string): Promise<RoundupInventoryJob> {
+  return jsonOrThrow(
+    await fetch(`/api/roundup/inventory/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function pauseRoundupInventory(id: string): Promise<RoundupInventoryJob> {
+  return jsonOrThrow(
+    await fetch(`/api/roundup/inventory/${encodeURIComponent(id)}/pause`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function resumeRoundupInventory(id: string): Promise<RoundupInventoryJob> {
+  return jsonOrThrow(
+    await fetch(`/api/roundup/inventory/${encodeURIComponent(id)}/resume`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function exportRoundupCopy(
+  sourcePath: string
+): Promise<{ manifest: RoundupManifestItem; outputPath: string }> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/export-copy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: sourcePath }),
+    })
+  );
+}
+
+export async function prepareRoundupStemHandoff(
+  sourcePath: string
+): Promise<{ manifestPath: string }> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/stems-handoff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: sourcePath,
+        confirmedExternalProcessing: true,
+      }),
+    })
+  );
+}
+
+export async function recordRoundupEvent(input: {
+  oldPath: string;
+  newPath: string;
+  oldName?: string;
+  newName?: string;
+  kind?: RoundupKind;
+  entityType?: RoundupEntityType;
+}): Promise<{ ok: true }> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/record", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function revealPathInFinder(
+  absPath: string
+): Promise<{ ok: true }> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: absPath }),
+    })
+  );
+}
+
+export async function setRoundupTrackable(input: {
+  trackable: boolean;
+  id?: string;
+  path?: string;
+}): Promise<{ tag: RoundupTag }> {
+  return jsonOrThrow(
+    await fetch("/api/roundup/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function fetchRoundupTags(
+  limit = 100
+): Promise<{ tags: RoundupTag[] }> {
+  return jsonOrThrow(await fetch(`/api/roundup/tags?limit=${limit}`));
 }
 
 export function formatBytes(b: number): string {

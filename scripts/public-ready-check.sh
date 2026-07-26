@@ -94,17 +94,26 @@ else
   exit 1
 fi
 
-printf "3e) Managed background audio smoke...\n"
-if npm run audio:smoke >"$TMP_DIR/stem-smoke.log" 2>&1; then
-  echo "   OK: asynchronous export, credential isolation, and atomic stem publication passed."
+printf "3e) Official Stem Studio connector smoke...\n"
+if npm run stem:smoke >"$TMP_DIR/stem-smoke.log" 2>&1; then
+  echo "   OK: fixed env, JSON-RPC, setup gate, alignment, and atomic publication passed."
 else
-  echo "   ERROR: managed background audio smoke failed."
+  echo "   ERROR: official Stem Studio connector smoke failed."
   cat "$TMP_DIR/stem-smoke.log"
   exit 1
 fi
 
+printf "3f) Premiere UXP plugin verification...\n"
+if npm run premiere:verify >"$TMP_DIR/premiere-verify.log" 2>&1; then
+  echo "   OK: Premiere panel lint, host mocks, import planning, and build passed."
+else
+  echo "   ERROR: Premiere UXP plugin verification failed."
+  cat "$TMP_DIR/premiere-verify.log"
+  exit 1
+fi
+
 printf "4) Validate required docs exist...\n"
-for f in README.md SECURITY.md THIRD_PARTY_NOTICES.md AGENTS.md mcp/README.md .env.example .github/CODEOWNERS; do
+for f in README.md SECURITY.md THIRD_PARTY_NOTICES.md AGENTS.md mcp/README.md docs/INTEGRATIONS.md docs/UNIVERSAL-CLIPPER.md adobe-premiere/README.md .env.example .github/CODEOWNERS; do
    if [ -f "$f" ]; then
      echo "   OK: $f exists"
    else

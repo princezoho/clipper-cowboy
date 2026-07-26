@@ -7,6 +7,12 @@
   - The app expects keys to be local only (Bring-Your-Own keys).
 - **Video content and local sidecars are user-owned and stay local.**
   - Project data is stored under `PROJECT_DIR` and `.clipcataloger/`.
+  - Project media may be intentionally moved or renamed; those operations use
+    no-overwrite destinations and are recorded in Roundup after success.
+  - Roundup inventory and stems handoff only read source media. Roundup Export
+    Copy creates a verified, uniquely named output under `derived/roundup/`;
+    it does not overwrite, trash, or remove the source.
+  - Future destructive Roundup actions require explicit user confirmation.
 - **Client should not expose secrets.**
   - Frontend only reads `hasOpenAIKey` (boolean).
   - Actual `OPENAI_API_KEY` value is only used server-side.
@@ -48,8 +54,9 @@ Before sharing with an external collaborator, confirm:
 3. `npm run build` succeeds.
 4. App works without AI key for basic clip/edit/export flows (AI features show as disabled).
 5. No debug logs print secret values.
-6. `npm run audio:smoke` proves the audio child does not inherit credential
-   sentinels and cannot publish paths outside `derived/stems/`.
+6. `npm run stem:smoke` proves the official MCP child receives only the fixed
+   environment allowlist, rejects non-JSON stdout and escaped/mismatched
+   outputs, and cannot publish outside unique `derived/stems/` jobs.
 
 ## Required key behavior (current implementation)
 

@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Universal Clipper</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Clipper Cowboy</p>
+        <h1>Universal Clipper</h1>
+      </div>
+      <span id="connection-pill" class="pill neutral">Disconnected</span>
+    </header>
+
+    <section class="card" aria-labelledby="connection-title">
+      <h2 id="connection-title">Local connection</h2>
+      <div class="connection-grid">
+        <label>Port
+          <input id="port" type="number" min="1" max="65535" value="47474" />
+        </label>
+        <label>Local API token <span class="optional">if enabled</span>
+          <input id="token" type="password" autocomplete="off" placeholder="Not embedded or saved" />
+        </label>
+      </div>
+      <button id="connect" class="primary">Connect and inspect project</button>
+      <p id="host-state" class="hint">Requires Premiere Pro 25.6+ and an open project.</p>
+    </section>
+
+    <section class="card" aria-labelledby="package-title">
+      <h2 id="package-title">Prepared package</h2>
+      <select id="package-select" disabled>
+        <option value="">Connect to list packages</option>
+      </select>
+      <div id="package-state" class="state neutral">No package loaded.</div>
+      <div id="counts" class="counts" hidden></div>
+    </section>
+
+    <section id="groups-card" class="card" hidden aria-labelledby="groups-title">
+      <div class="section-row">
+        <h2 id="groups-title">Import preview</h2>
+        <button id="refresh" class="quiet">Refresh</button>
+      </div>
+      <div id="groups"></div>
+    </section>
+
+    <section class="card actions" aria-labelledby="actions-title">
+      <h2 id="actions-title">Actions</h2>
+      <button id="import-missing" class="primary" disabled>Import missing</button>
+      <p class="hint">Creates <strong>Universal Clipper / source-name</strong> bins. Retry is idempotent; matching uses canonical media path first, then trusted Clipper mappings.</p>
+      <hr />
+      <label>Clip group for timeline
+        <select id="timeline-group" disabled>
+          <option value="">Choose an imported clip group</option>
+        </select>
+      </label>
+      <button id="add-timeline" class="danger" disabled>Add group at playhead</button>
+      <p class="warning">Explicit action only. Uses Premiere’s UXP overwrite actions at the current playhead for clip video plus DIALOGUE, MUSIC, and SFX; MARRIED is excluded.</p>
+    </section>
+
+    <div id="message" role="status" aria-live="polite"></div>
+
+    <footer>
+      AirTag/group IDs remain in Clipper’s local mapping because Premiere UXP
+      25.6 has no documented project-item comment/XMP writer.
+    </footer>
+  </main>
+  <script src="core.js"></script>
+  <script src="api.js"></script>
+  <script src="host.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

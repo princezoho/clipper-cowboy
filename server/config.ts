@@ -48,7 +48,6 @@ const durationsPath = path.join(internalDir, "durations.json");
 const imageMetaDir = path.join(internalDir, "image-meta");
 const imageThumbsDir = path.join(internalDir, "image-thumbs");
 const sourceMetaDir = path.join(internalDir, "source-meta");
-const rawStemTimeout = Number(process.env.CLIPPER_STEMS_TIMEOUT_MINUTES ?? 360);
 
 const shotlistMdPath = path.join(projectDir, "shotlist.md");
 const shotlistCsvPath = path.join(projectDir, "shotlist.csv");
@@ -96,10 +95,6 @@ export const config = {
   shotlistMdPath,
   shotlistCsvPath,
   openaiApiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
-  stemTimeoutMinutes:
-    Number.isFinite(rawStemTimeout) && rawStemTimeout >= 1
-      ? Math.min(rawStemTimeout, 24 * 60)
-      : 360,
 };
 
 export const POOL_CACHE_DIR = thumbCacheDir; // legacy alias (still used by some routes)

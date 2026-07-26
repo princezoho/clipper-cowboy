@@ -9,6 +9,12 @@ This file is the operational contract for coding agents working in this repo.
 - Keep the server bound to `127.0.0.1`; it has local filesystem capabilities
   and is not a remotely authenticated service.
 - Treat `PROJECT_DIR` media and `.clipcataloger/` metadata as user-owned data.
+- Intentional project media moves and renames are allowed, but must use
+  collision-safe destinations, fail without overwriting, and record Roundup
+  history after success. New Roundup inventory/export/stems flows are
+  copy/read-only with respect to source media: exports allocate unique files,
+  never overwrite, and never automatically delete or move media to Trash.
+- Any future destructive Roundup action requires explicit user confirmation.
 - Do not publish, push, or change repository visibility without explicit owner
   approval.
 

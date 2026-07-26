@@ -13,6 +13,9 @@ import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { pathToId } from "../util/id.js";
 import { loadAllDrafts } from "./drafts.js";
 import { appendActivity } from "../util/activity.js";
+import { appendRoundupEvent } from "../util/roundup.js";
+import { moveFileNoReplace } from "../util/nonLossyMove.js";
+import { publicError } from "../util/publicError.js";
 
 export interface PoolItem {
   id: string;
@@ -154,10 +157,6 @@ function listFolders(): string[] {
 
 const DURATIONS_PATH = config.durationsPath;
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 interface DurationEntry {
   duration: number;
   size: number;
@@ -297,7 +296,7 @@ router.post("/pool/folders", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:resolve-folder") });
     return;
   }
   if (abs === config.poolDir) {
@@ -307,7 +306,7 @@ router.post("/pool/folders", (req, res) => {
   try {
     fs.mkdirSync(abs, { recursive: true });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:create-folder") });
     return;
   }
   res.json({
@@ -331,7 +330,7 @@ router.delete("/pool/folders", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:resolve-folder") });
     return;
   }
   if (abs === config.poolDir) {
@@ -348,7 +347,7 @@ router.delete("/pool/folders", (req, res) => {
       .readdirSync(abs)
       .filter((n) => !n.startsWith("."));
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:read-folder") });
     return;
   }
   if (entries.length > 0) {
@@ -360,7 +359,7 @@ router.delete("/pool/folders", (req, res) => {
   try {
     fs.rmdirSync(abs);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:delete-folder") });
     return;
   }
   res.json({ ok: true });
@@ -516,7 +515,7 @@ router.get("/pool/duration/:id", async (req, res) => {
     saveDurationCache(cache);
     res.json({ duration: d });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:duration") });
   }
 });
 
@@ -534,7 +533,7 @@ router.get("/thumb/:id", async (req, res) => {
     try {
       await extractFrameJpeg(file, t, cachePath, w);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicError(err, "pool:thumb") });
       return;
     }
   }
@@ -690,7 +689,7 @@ function moveSourceFile(absSrc: string, folderAbs: string): MoveResult {
   }
 
   const oldId = pathToId(absSrc);
-  fs.renameSync(absSrc, destAbs);
+  moveFileNoReplace(absSrc, destAbs);
   const newId = pathToId(destAbs);
   const newFilename = path.basename(destAbs);
 
@@ -705,7 +704,7 @@ function moveSourceFile(absSrc: string, folderAbs: string): MoveResult {
     // Bookkeeping failed — try to undo the rename so the user isn't left in a
     // half-moved state where Library shows missing-source warnings.
     try {
-      fs.renameSync(destAbs, absSrc);
+      moveFileNoReplace(destAbs, absSrc);
     } catch {
       // ignore — at this point user has to recover manually
     }
@@ -717,6 +716,18 @@ function moveSourceFile(absSrc: string, folderAbs: string): MoveResult {
   // waiting for the next /api/pool fetch.
   idToPath.delete(oldId);
   idToPath.set(newId, destAbs);
+
+  appendRoundupEvent({
+    kind: "pool_move",
+    entityType: "pool",
+    oldPath: absSrc,
+    newPath: destAbs,
+    oldName: filename,
+    newName: newFilename,
+    oldId,
+    newId,
+    triggeredBy: "user",
+  });
 
   return {
     oldId,
@@ -746,7 +757,7 @@ router.post("/pool/move", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:resolve-folder") });
     return;
   }
   const items: MoveResult[] = [];
@@ -771,7 +782,7 @@ router.post("/pool/move", (req, res) => {
     } catch (err) {
       errors.push({
         id,
-        error: errorMessage(err),
+        error: publicError(err, "pool:move"),
       });
     }
   }
@@ -796,7 +807,7 @@ router.post("/pool/:id/move", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:resolve-folder") });
     return;
   }
   try {
@@ -813,7 +824,7 @@ router.post("/pool/:id/move", (req, res) => {
   } catch (err) {
     res
       .status(500)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:move") });
   }
 });
 
@@ -832,7 +843,7 @@ router.post("/pool/reveal", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: errorMessage(err) });
+      .json({ error: publicError(err, "pool:resolve-folder") });
     return;
   }
   if (!fs.existsSync(abs)) {

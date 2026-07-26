@@ -14,6 +14,7 @@ import { resolvePoolId } from "./pool.js";
 import { listCharacters } from "../util/characters.js";
 import { listEntities } from "../util/entities.js";
 import { appendActivity } from "../util/activity.js";
+import { publicError } from "../util/publicError.js";
 
 /*
  * Folder-suggestion vision pass for the Pool tab's Auto-organize wizard.
@@ -263,7 +264,7 @@ async function analyzeOne(
       currentFolder,
       duration,
       suggested: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: publicError(err, "pool:analyze-content-item"),
     };
   } finally {
     try {
@@ -318,7 +319,7 @@ router.post("/pool/analyze-content", async (req, res) => {
     );
   } catch (err) {
     if (sendOpenAIClientError(res, err)) return;
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:analyze-content") });
     return;
   }
 

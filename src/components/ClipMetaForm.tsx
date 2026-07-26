@@ -159,88 +159,13 @@ export default function ClipMetaForm({
 
         {stemModeSupported && (
           <div className="w-full rounded-md border border-ink-700 bg-ink-950/40 p-2 md:w-[22rem]">
-            <label className="flex items-center gap-2 text-sm text-ink-100">
-              <input
-                type="checkbox"
-                checked={createStems}
-                onChange={(event) => {
-                  if (event.target.checked) {
-                    onCreateStems(true);
-                  } else {
-                    onCreateStems(false);
-                  }
-                }}
-                disabled={!audioEngineReady || audioEngineLoading}
-                className="h-4 w-4 accent-accent-500"
-              />
-              <span>Split audio stems</span>
-            </label>
+            <div className="text-sm text-ink-100">Stems after export</div>
             <div className="mt-1 text-[11px] leading-4 text-ink-500">
-              {audioEngineLoading
-                ? "Checking audio splitting…"
-                : audioEngineReady
-                  ? "Dialogue, music, Effects / SFX, and married mix. Effects / SFX are best-effort residual effects; music is excluded first."
-                  : audioEngineStatus?.message ?? "Audio splitting is not available in this build yet."}
+              Export first, then select one or more Library clips and open
+              Universal Clipper. Its confirmation-gated official Stem Studio
+              MCP flow creates full-source and exact clip-aligned stems without
+              installing or downloading models.
             </div>
-            {!audioEngineLoading && !audioEngineReady && (
-              <button
-                type="button"
-                onClick={onRequestStemSetup}
-                className="mt-2 rounded border border-ink-700 px-2 py-1 text-xs text-ink-200 hover:bg-ink-800"
-              >
-                Set up audio splitting
-              </button>
-            )}
-
-            {createStems && (
-            <div className="mt-2">
-              <div
-                className="grid grid-cols-1 gap-1"
-                role="radiogroup"
-                aria-label="Stem quality"
-              >
-                {STEM_QUALITY_OPTIONS.map((option) => {
-                  const selected = stemQuality === option.value;
-                  const recommended =
-                    audioEngineStatus?.recommendedQuality === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => onStemQuality(option.value)}
-                      title={
-                        option.description
-                      }
-                      className={
-                        "rounded border px-2 py-1.5 text-left transition " +
-                        (selected
-                          ? "border-accent-400 bg-accent-500/15 text-ink-100"
-                          : "border-ink-700 bg-ink-900 text-ink-400 hover:bg-ink-800")
-                      }
-                    >
-                      <span className="block text-xs font-medium">
-                        {option.label}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] leading-3 text-ink-500">
-                        {option.description}
-                        {option.value === "high" && !audioEngineStatus?.installedQualities.includes("high")
-                          ? " · Downloads before its first job."
-                          : ""}
-                        {recommended ? " · Recommended" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-1.5 text-[11px] text-emerald-300">
-                {audioEngineReady
-                  ? "Runs locally in the background. Keep clipping while it works."
-                  : "Install audio splitting to queue it after export."}
-              </div>
-            </div>
-            )}
           </div>
         )}
 

@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Clipper Roundup — Recorded Guide & Status</title>
+  <style>
+    :root {
+      --night: #090907;
+      --coal: #11110e;
+      --panel: #181711;
+      --panel-2: #211f16;
+      --line: #3f3a27;
+      --rope: #f5d829;
+      --rope-soft: #cdbd3e;
+      --cream: #f6f0dc;
+      --muted: #aaa68f;
+      --faint: #75715f;
+      --orange: #ff6a2a;
+      --green: #71d29a;
+      --blue: #7ab8ff;
+      --violet: #c5a4ff;
+      --red: #ff8d78;
+      --radius: 18px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, .35);
+      --content: 1080px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 15% 0, rgba(245, 216, 41, .09), transparent 30rem),
+        radial-gradient(circle at 90% 8%, rgba(255, 106, 42, .08), transparent 28rem),
+        var(--night);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: .035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    a { color: inherit; }
+    button { font: inherit; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .shell { width: min(calc(100% - 32px), var(--content)); margin: 0 auto; padding: 24px 0 72px; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 0 24px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .top-actions, .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--cream);
+      background: rgba(255,255,255,.025);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .button:hover { border-color: var(--rope); background: rgba(245,216,41,.06); }
+    .button.primary { color: #111; border-color: var(--rope); background: var(--rope); font-weight: 750; }
+    .button.compact { min-height: 30px; padding: 0 10px; font-size: 11px; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 104px minmax(0, 1fr) 230px;
+      gap: 28px;
+      align-items: center;
+      padding: clamp(28px, 6vw, 64px);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(35,33,23,.96), rgba(15,15,12,.92));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .hero-mark { width: 104px; height: 104px; object-fit: contain; }
+    .hero-gif { width: 230px; height: 164px; object-fit: cover; object-position: 32% 48%; mix-blend-mode: screen; }
+    .kicker, .label {
+      margin: 0 0 8px;
+      color: var(--rope);
+      font: 700 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(42px, 7vw, 80px); line-height: .92; letter-spacing: -.05em; }
+    h2 { margin: 0 0 10px; font-size: clamp(27px, 4vw, 42px); letter-spacing: -.035em; }
+    h3 { margin: 0; font-size: 18px; }
+    p { margin: 0; color: var(--muted); line-height: 1.6; }
+    .hero-copy > p:not(.kicker) { margin-top: 18px; max-width: 680px; font-size: 17px; }
+    .hero-note { color: var(--cream); }
+    .date { margin-top: 18px; color: var(--faint); font-size: 12px; }
+
+    section { padding: 72px 0 0; }
+    .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 480px); gap: 24px; align-items: end; margin-bottom: 24px; }
+    .section-head p { max-width: 500px; }
+
+    .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .legend-card, .truth-card, .step, .road-card, .scope-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(24,23,17,.78);
+    }
+    .legend-card { padding: 16px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font: 750 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .verified { color: var(--green); }
+    .trial { color: var(--blue); }
+    .preview { color: var(--violet); }
+    .not-built { color: var(--red); }
+    .legend-card p { margin-top: 10px; font-size: 13px; }
+
+    .truth-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+    .truth-card { padding: 22px; }
+    .truth-card h3 { margin: 14px 0 8px; }
+    .truth-card ul, .road-card ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.55; }
+    .truth-card li + li, .road-card li + li { margin-top: 7px; }
+    .evidence { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12px; }
+
+    .scope {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .scope-card { padding: 22px; }
+    .scope-card strong { display: block; margin-bottom: 6px; color: var(--cream); }
+    .scope-card.move { border-color: rgba(255,106,42,.42); }
+    .scope-card.copy { border-color: rgba(113,210,154,.42); }
+
+    .steps { display: grid; gap: 18px; }
+    .step {
+      display: grid;
+      grid-template-columns: 64px minmax(230px, .72fr) minmax(0, 1.35fr);
+      gap: 22px;
+      padding: 20px;
+      scroll-margin-top: 20px;
+    }
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      border: 1px solid var(--rope-soft);
+      border-radius: 50%;
+      color: var(--rope);
+      font: 800 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .step-copy h3 { margin: 2px 0 8px; font-size: 21px; }
+    .expect, .safety { margin-top: 12px; padding-left: 12px; border-left: 2px solid var(--blue); font-size: 13px; }
+    .safety { border-color: var(--green); }
+    .expect b, .safety b { color: var(--cream); }
+
+    .mock-wrap { min-width: 0; }
+    .mock-label { margin-bottom: 7px; color: var(--rope-soft); font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; text-transform: uppercase; }
+    .mock {
+      min-width: 0;
+      border: 1px solid #403d34;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0d0e0f;
+      box-shadow: 0 18px 42px rgba(0,0,0,.28);
+    }
+    .mock-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-bottom: 1px solid #292a2c; color: #7c7f84; font: 10px ui-monospace, monospace; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #4d4f53; }
+    .mock-body { padding: 14px; }
+    .mock-title { color: #f2f2ef; font-size: 13px; font-weight: 700; }
+    .mock-sub { color: #86898e; font-size: 10px; line-height: 1.45; }
+    .mock-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .root-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+    .root {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      padding: 8px;
+      border: 1px solid #2d2f31;
+      border-radius: 7px;
+      color: #deded9;
+      font-size: 10px;
+    }
+    .root input { accent-color: var(--orange); }
+    .root small { display: block; margin-top: 2px; color: #707378; font: 8px ui-monospace, monospace; }
+    .mock-button { padding: 7px 10px; border: 0; border-radius: 6px; color: #111; background: var(--orange); font-size: 9px; font-weight: 800; }
+    .mock-button.ghost { color: #ddd; border: 1px solid #4a4c51; background: transparent; }
+    .mock-button.violet { color: #d8c6ff; border: 1px solid #684c91; background: #241933; }
+    .mock-input { width: 100%; padding: 9px; border: 1px solid #393b3f; border-radius: 6px; color: #d9d9d4; background: #131416; font: 9px ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; }
+    .inventory-line, .history-line {
+      display: grid;
+      gap: 6px;
+      margin-top: 9px;
+      padding: 10px;
+      border: 1px solid #292b2e;
+      border-radius: 7px;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { padding: 3px 5px; border-radius: 4px; color: #ff9e73; background: #3d2016; font: 8px ui-monospace, monospace; text-transform: uppercase; }
+    .chip.green { color: #90e6ae; background: #163322; }
+    .chip.violet { color: #d4bcff; background: #2b1d41; }
+    .path { color: #eee; font: 9px/1.45 ui-monospace, monospace; overflow-wrap: anywhere; }
+    .muted-path { color: #71747a; font: 8px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+
+    .locator-demo { position: relative; }
+    .locator-demo .lasso-runner {
+      position: absolute;
+      top: -40px;
+      right: 4px;
+      width: 100px;
+      height: 72px;
+      object-fit: cover;
+      object-position: 32% 48%;
+      mix-blend-mode: screen;
+      opacity: 0;
+      transform: translateX(-26px) scale(.88);
+      transition: opacity 280ms ease, transform 500ms cubic-bezier(.2,.8,.2,1);
+      pointer-events: none;
+    }
+    .locator-demo[data-stage="1"] .lasso-runner,
+    .locator-demo[data-stage="2"] .lasso-runner { opacity: .85; transform: translateX(0) scale(1); }
+    .demo-stage { opacity: .28; transform: translateY(5px); transition: opacity 300ms ease, transform 380ms cubic-bezier(.2,.8,.2,1), border-color 300ms ease; }
+    .locator-demo[data-stage="0"] [data-demo-stage="0"],
+    .locator-demo[data-stage="1"] [data-demo-stage="1"],
+    .locator-demo[data-stage="2"] [data-demo-stage="2"],
+    .locator-demo[data-stage="3"] [data-demo-stage="3"] { opacity: 1; transform: none; border-color: var(--orange); }
+    .locator-demo[data-stage="2"] [data-demo-stage="1"],
+    .locator-demo[data-stage="3"] [data-demo-stage="1"],
+    .locator-demo[data-stage="3"] [data-demo-stage="2"] { opacity: 1; transform: none; }
+    .demo-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+    .demo-dots { display: flex; gap: 6px; }
+    .demo-dot { width: 7px; height: 7px; border: 0; border-radius: 50%; background: #45474b; padding: 0; cursor: pointer; }
+    .demo-dot.active { background: var(--rope); }
+
+    .progress-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+    .progress-card { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+    .progress-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .progress-value { color: var(--rope); font: 800 24px ui-monospace, monospace; }
+    .progress-bar { height: 7px; margin: 12px 0; border-radius: 9px; background: #090a08; overflow: hidden; }
+    .progress-bar span { display: block; height: 100%; width: var(--amount); background: linear-gradient(90deg, var(--orange), var(--rope)); }
+    .progress-card p { font-size: 12px; }
+    .roadmap { display: grid; gap: 10px; }
+    .road-card { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 20px; padding: 20px; }
+    .road-card.next { border-color: rgba(122,184,255,.6); box-shadow: inset 4px 0 var(--blue); }
+    .road-card h3 { margin-top: 10px; }
+    .road-card p { font-size: 13px; }
+    .road-label { color: var(--faint); font: 700 10px ui-monospace, monospace; letter-spacing: .11em; text-transform: uppercase; }
+    .road-card .exit { color: var(--cream); }
+
+    .links { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .link-card { display: block; padding: 16px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; background: var(--panel); }
+    .link-card:hover { border-color: var(--rope); }
+    .link-card small { display: block; margin-top: 5px; color: var(--faint); }
+    .steps { display: none; }
+    .capture-note { padding: 16px 18px; border: 1px solid rgba(113,210,154,.45); border-radius: 14px; color: var(--cream); background: rgba(113,210,154,.06); }
+    .tutorial-video { display: block; width: 100%; margin-top: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: #050505; box-shadow: var(--shadow); }
+    .capture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+    .capture { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .capture img { display: block; width: 100%; border-radius: 9px; }
+    .capture figcaption { padding: 10px 4px 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .package-code { margin-top: 14px; padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; color: var(--cream); background: #0d0e0f; line-height: 1.65; }
+    .next-list { margin: 16px 0 0; padding-left: 22px; color: var(--muted); line-height: 1.7; }
+    footer { padding: 54px 0 0; text-align: center; color: var(--faint); font-size: 11px; }
+
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 78px 1fr; }
+      .hero-mark { width: 78px; height: 78px; }
+      .hero-gif { display: none; }
+      .legend { grid-template-columns: 1fr 1fr; }
+      .section-head, .step, .road-card { grid-template-columns: 1fr; }
+      .step-number { width: 42px; height: 42px; }
+      .road-card { gap: 10px; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(calc(100% - 20px), var(--content)); }
+      .topbar { align-items: flex-start; }
+      .topbar > span { display: none; }
+      .hero { grid-template-columns: 1fr; padding: 26px 22px; }
+      .hero-mark { width: 64px; height: 64px; }
+      .legend, .truth-grid, .scope, .progress-grid, .links, .root-grid, .capture-grid { grid-template-columns: 1fr; }
+      section { padding-top: 52px; }
+      .step { padding: 16px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+      .lasso-runner { display: none; }
+    }
+
+    @media print {
+      :root { color-scheme: light; }
+      body { color: #171711; background: #fff; }
+      body::before, .top-actions, .demo-controls, .hero-gif, .lasso-runner { display: none !important; }
+      .shell { width: 100%; padding: 0; }
+      .hero, .legend-card, .truth-card, .step, .road-card, .scope-card, .progress-card, .link-card {
+        color: #171711; background: #fff; border-color: #aaa; box-shadow: none; break-inside: avoid;
+      }
+      p, .evidence, .mock-sub, .road-label { color: #454545; }
+      .mock { break-inside: avoid; }
+      section { padding-top: 34px; }
+      a { text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <span class="mono">Roundup status · 14 Jul 2026</span>
+      <div class="top-actions">
+        <a class="button primary" href="../../?tab=roundup">Open Roundup tab</a>
+        <button class="button" type="button" onclick="window.print()">Print / save PDF</button>
+      </div>
+    </div>
+
+    <header class="hero">
+      <img class="hero-mark" src="./lasso.svg" alt="Clipper Roundup lasso mark" width="104" height="104" />
+      <div class="hero-copy">
+        <p class="kicker">Tracking proof and native editor bridge</p>
+        <h1>Roundup<br />Field Guide</h1>
+        <p class="hero-note">Roundup is a general media AirTag and life-history system for approved local roots.</p>
+        <p>It tracks files through approved roots. Universal Clipper now prepares selected clips, executes the official Stem Studio MCP when configured, validates a flat package, and exposes it to a Premiere Pro 25.6+ UXP panel.</p>
+        <div class="date mono">Updated 14 Jul 2026 · Stem MCP connected/setup-required · Premiere 26.2.2 detected · UXP tool absent</div>
+      </div>
+      <img class="hero-gif" src="./lasso-spin.gif" alt="Supplied animated lasso spinning" width="230" height="164" />
+    </header>
+
+    <section id="truth">
+      <div class="section-head">
+        <div><p class="label">Shared vocabulary</p><h2>What each claim means</h2></div>
+        <p>“Implemented” is not the same as “proven with your media.” This legend keeps those states separate.</p>
+      </div>
+      <div class="legend">
+        <article class="legend-card"><span class="status verified">Verified</span><p>Automated isolated fixture tests passed in this repo.</p></article>
+        <article class="legend-card"><span class="status trial">Recorded trial</span><p>Bounded real aggregate and isolated synthetic tracking evidence now exist.</p></article>
+        <article class="legend-card"><span class="status preview">Preview</span><p>Preparation or intent only; no downstream processing runs.</p></article>
+        <article class="legend-card"><span class="status not-built">Not built</span><p>No working implementation should be expected.</p></article>
+      </div>
+
+      <div class="truth-grid">
+        <article class="truth-card">
+          <span class="status verified">Verified</span>
+          <h3>Safety utilities on isolated fixtures</h3>
+          <ul>
+            <li>Collision-safe project media moves do not overwrite an occupied destination.</li>
+            <li>Inventory preview and export-copy preserve source bytes and allocate unique output names.</li>
+            <li>Stem handoff fails closed without confirmation; confirmed manifests are unique and preserve source media.</li>
+          </ul>
+          <div class="evidence mono">Evidence: npm run safety:test · 4/4 passed · 12 Jul 2026</div>
+        </article>
+        <article class="truth-card">
+          <span class="status trial">Ready to trial</span>
+          <h3>Local Roundup workflow</h3>
+          <ul>
+            <li>Roundup tab, approved watch roots, bounded inventory up to 1,000/5,000 API max, AirTag UUIDs, lookup, life history, Copy path, and Reveal.</li>
+            <li>Watcher primes existing local paths, then pairs future unlink/add events for supported media under enabled roots.</li>
+            <li>Clipper pool, library, image moves and selected restore/trash actions record Roundup history after success.</li>
+          </ul>
+          <div class="evidence">Now proven with read-only Fundrop inventory and an isolated two-hop synthetic rename fixture.</div>
+        </article>
+        <article class="truth-card">
+          <span class="status trial">Setup required</span>
+          <h3>Official stems connector</h3>
+          <ul>
+            <li>Universal Clipper checks the official Stem Studio MCP, queues one source at a time, and never invokes setup or downloads.</li>
+            <li>High is recommended; Max requires a separate licensing confirmation.</li>
+            <li>Returned full stems and exact sample-boundary clip stems publish only after containment, duration, sample-rate, and channel validation.</li>
+          </ul>
+          <div class="evidence">Official source MCP 1.0.0 was built from the existing checkout, identity-validated, saved in project-local settings, initialized over stdio, and exposed all six expected tools. Its configured source cache reports no installed model, so Clipper stops at Setup required. No live separation ran.</div>
+        </article>
+        <article class="truth-card">
+          <span class="status preview">Runtime unverified</span>
+          <h3>External host boundaries</h3>
+          <ul>
+            <li>Cloud-native Dropbox or Google Drive watching; local synced folders only behave like ordinary local roots when explicitly approved.</li>
+            <li>Premiere Pro 26.2.2 is installed and was already running. UXP Developer Tool is not installed, so the panel was not loaded and no open project was inspected.</li>
+            <li>No automatic timeline edits. Optional placement requires a separate explicit panel action.</li>
+            <li>Automatic discovery of unresolved Gunslinger, Seedance, or droplet roots outside known project-local locations.</li>
+            <li>Guaranteed cross-volume or cross-machine move matching.</li>
+          </ul>
+          <div class="evidence">A missed watch event or unseeded file may still require manual hunting.</div>
+        </article>
+      </div>
+
+      <div class="scope">
+        <article class="scope-card move"><strong>Intentional project moves and renames</strong><p>Allowed. They use collision-safe destinations, fail without overwriting, and append Roundup history after the media operation succeeds.</p></article>
+        <article class="scope-card copy"><strong>Inventory, export-copy, and handoff flows</strong><p>Source-preserving. Inventory reads metadata and adds Roundup metadata; export creates a unique verified copy; stems preparation creates only a unique manifest.</p></article>
+      </div>
+    </section>
+
+    <section id="workflow">
+      <div class="section-head">
+        <div><p class="label">Do this now</p><h2>The practical workflow</h2></div>
+        <p>These are real captures from the current Roundup UI at 1440×900. Fundrop appears only as aggregate inventory/status; every visible filename is the synthetic demo fixture.</p>
+      </div>
+      <p class="capture-note"><strong>Fundrop: real read-only inventory; rename demo: synthetic fixture.</strong> No export, stems processing, upload, Finder reveal, or external application action was executed.</p>
+      <video class="tutorial-video" controls preload="metadata" poster="./tutorial/05-old-path-airtag-history.png">
+        <source src="./tutorial/roundup-walkthrough.mp4" type="video/mp4" />
+        <source src="./tutorial/roundup-walkthrough.webm" type="video/webm" />
+        <a href="./tutorial/roundup-walkthrough.mp4">Download the tutorial video</a>
+      </video>
+      <div class="button-row" style="margin-top:12px">
+        <a class="button" href="./tutorial/roundup-walkthrough-preview.gif">Open animated preview</a>
+        <a class="button" href="./tutorial/README.md">Artifact manifest</a>
+      </div>
+      <div class="capture-grid">
+        <figure class="capture"><img src="./tutorial/01-fundrop-watched.png" alt="Live Roundup watcher with Fundrop watched" /><figcaption>01 · Capture evidence: Fundrop approved and healthy. Current readiness: Downloads + fundrop are Watched; other broad roots remain inventory-only.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/02-fundrop-inventory-aggregate.png" alt="Fundrop aggregate inventory result" /><figcaption>02 · Real Fundrop aggregate: 85 regular entries checked, 80 media items tagged. Filename list intentionally hidden.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/03-demo-seeded-export-preview.png" alt="Synthetic WAV seeded in Roundup" /><figcaption>03 · Synthetic silent WAV seeded with an AirTag; export destination and manifest-only stems control are previews.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/04-two-watched-hops.png" alt="Two synthetic watched rename hops" /><figcaption>04 · Two external rename/move hops recorded inside the isolated demo root.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/05-old-path-airtag-history.png" alt="Old path lookup with stable AirTag and life history" /><figcaption>05 · Original path lookup resolves the current file, stable AirTag, and complete trail.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/06-copy-and-reveal-controls.png" alt="Copy path and Reveal in Finder locator controls" /><figcaption>06 · Copy path exercised successfully; Reveal in Finder shown but not triggered.</figcaption></figure>
+        <figure class="capture"><img src="./tutorial/07-export-and-stems-preview.png" alt="Export preview and stems handoff distinction" /><figcaption>07 · High-fidelity export preview versus explicit manifest-only stems handoff. Neither action was executed.</figcaption></figure>
+      </div>
+      <h3 style="margin-top:24px">What you do next</h3>
+      <ol class="next-list">
+        <li>Keep Roundup running while Fundrop, droplets, and renamers work.</li>
+        <li>Verify each intended root says <strong>Watched</strong>.</li>
+        <li>Paste any old path or filename to locate the current file.</li>
+        <li>Copy the current path or Reveal in Finder, then use the file in your destination app.</li>
+        <li>In Library selection mode, prepare media, confirm official Stem Studio execution, wait for Ready for Premiere, then use the native UXP panel’s Import missing preview.</li>
+      </ol>
+      <template id="legacy-walkthrough">
+        <article class="step">
+          <div class="step-number">01</div>
+          <div class="step-copy">
+            <h3>Open Roundup</h3>
+            <p>Start Clipper locally, then choose the Roundup tab. The direct button works when this guide is served by Vite.</p>
+            <p class="expect"><b>Expected:</b> watcher, inventory, missing-media lookup, and recent moves are visible.</p>
+            <p class="safety"><b>Safety:</b> keep the app on <span class="mono">127.0.0.1</span>.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Roundup entry</div>
+            <div class="mock"><div class="mock-bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i> Clipper Cowboy · Pool · Library · Images · <b style="color:#f5d829">Roundup</b></div><div class="mock-body mock-row"><div><div class="mock-title">Clipper Roundup</div><div class="mock-sub">AirTag for your footage · copy path → reveal current file</div></div><img src="./lasso.svg" alt="" width="46" height="46" /></div></div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">02</div>
+          <div class="step-copy">
+            <h3>Review and approve watch roots</h3>
+            <p>Turn off anything you do not want watched. Keep only the project and chosen Downloads/Desktop roots. Add existing Gunslinger, Seedance, or droplet folders explicitly when needed.</p>
+            <p class="expect"><b>Expected:</b> each enabled root shows an existing canonical path and reason.</p>
+            <p class="safety"><b>Safety:</b> approval is metadata-only; hidden/system trees, symlinks, and paths outside the safe policy are rejected.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Watch roots</div>
+            <div class="mock"><div class="mock-bar">Local watcher · <span style="color:#71d29a">● live</span></div><div class="mock-body"><div class="root-grid">
+              <label class="root"><input type="checkbox" checked disabled><span>Project<small>/approved/clip-project</small></span></label>
+              <label class="root"><input type="checkbox" checked disabled><span>Downloads<small>~/Downloads</small></span></label>
+              <label class="root"><input type="checkbox" disabled><span>Desktop<small>review before enabling</small></span></label>
+              <label class="root"><input type="checkbox" checked disabled><span>Seedance / Gunslinger<small>explicitly approved</small></span></label>
+            </div><div class="mock-row" style="margin-top:10px"><span class="mock-sub">Droplet destination: unresolved</span><button class="mock-button ghost">Validate and approve</button></div></div></div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">03</div>
+          <div class="step-copy">
+            <h3>Seed a bounded inventory</h3>
+            <p>Start with one small approved folder. Click “Seed inventory (max 1,000)” to assign AirTag identities to existing supported media.</p>
+            <p class="expect"><b>Expected:</b> checked/tagged counts and a per-file AirTag appear.</p>
+            <p class="safety"><b>Safety:</b> inventory skips symlinks and sensitive directories; cancel if the chosen scope looks wrong. It writes metadata, not media.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Inventory / AirTag</div>
+            <div class="mock"><div class="mock-bar">Safe media inventory</div><div class="mock-body"><div class="mock-row"><div><div class="mock-title">Status: done</div><div class="mock-sub">Files checked: 18 · Media tagged: 7 / 1,000</div></div><button class="mock-button">Seed inventory</button></div>
+              <div class="inventory-line"><div class="chips"><span class="chip">AirTag 8b2f10aa</span><span class="chip green">video</span></div><div class="path">…/approved-trial/shot_0142.mov</div><div class="muted-path">Preview → …/derived/roundup/shot_0142.mov · unique/no overwrite</div></div>
+            </div></div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">04</div>
+          <div class="step-copy">
+            <h3>Leave watching on for future moves</h3>
+            <p>After the watcher says “live,” rename or move media in Finder within approved roots. Roundup pairs a removal and addition during its 45-second window.</p>
+            <p class="expect"><b>Expected:</b> Recent moves gains a “Watched move,” and the AirTag’s current path advances.</p>
+            <p class="safety"><b>Safety:</b> same-volume inode matches are strongest. Cross-volume, delayed, or tool-driven rewrites need real testing and may not pair.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · AirTag trail</div>
+            <div class="mock"><div class="mock-bar">Recent moves</div><div class="mock-body"><div class="history-line"><div class="chips"><span class="chip green">Watched move</span><span class="chip">tagged</span></div><div class="muted-path">…/approved-trial/shot_0142.mov</div><div class="path">→ …/approved-trial/selects/hero_closeup.mov</div><div class="mock-sub">Recorded after Finder rename · source move performed by Finder, not Roundup</div></div></div></div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">05</div>
+          <div class="step-copy">
+            <h3>Locate tracked media from any old name</h3>
+            <p>Paste an old path or filename, click Round up, inspect the life history, then Copy path or Reveal in Finder.</p>
+            <p class="expect"><b>Expected:</b> a current on-disk candidate and its old → new trail.</p>
+            <p class="safety"><b>Safety:</b> Roundup does not edit downstream projects. Confirm the candidate before using it.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Interactive locator demo</div>
+            <div class="mock locator-demo" id="locator-demo" data-stage="0">
+              <img class="lasso-runner" src="./lasso-spin.gif" alt="" width="100" height="72" />
+              <div class="mock-bar">Locate tracked media · staged walkthrough</div>
+              <div class="mock-body">
+                <div class="demo-stage mock-row" data-demo-stage="0"><div class="mock-input">/Volumes/OLD/Seedance/out/clip_0142.mov</div><button class="mock-button">Round up</button></div>
+                <div class="demo-stage history-line" data-demo-stage="1"><div class="chips"><span class="chip">AirTag match</span><span class="chip green">on disk</span></div><div class="path">…/approved-trial/selects/hero_closeup.mov</div></div>
+                <div class="demo-stage history-line" data-demo-stage="2"><div class="mock-sub">Life history · 2 hops</div><div class="muted-path">1. /Volumes/OLD/Seedance/out/clip_0142.mov<br>2. ~/Downloads/clip_0142.mov<br><span style="color:#eee">● …/selects/hero_closeup.mov</span></div></div>
+                <div class="demo-stage mock-row" data-demo-stage="3" style="margin-top:9px"><span class="mock-sub">General locator handoff</span><div class="button-row"><button class="mock-button">Copy path</button><button class="mock-button ghost">Reveal in Finder</button></div></div>
+                <div class="demo-controls"><button class="button compact" id="demo-replay" type="button">Replay lookup</button><div class="demo-dots" aria-label="Demo stages"></div></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">06</div>
+          <div class="step-copy">
+            <h3>Preview, then create an export copy</h3>
+            <p>Review the destination shown on the inventory item. Use Export Copy only when you want a byte-for-byte duplicate under <span class="mono">derived/roundup/</span>.</p>
+            <p class="expect"><b>Expected:</b> a new unique output path is copied to the clipboard.</p>
+            <p class="safety"><b>Safety:</b> the original remains present and unchanged; existing outputs are never overwritten.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Export preview</div>
+            <div class="mock"><div class="mock-bar">High-fidelity export copy</div><div class="mock-body"><div class="inventory-line"><div class="path">Source · …/approved-trial/hero_closeup.mov</div><div class="muted-path">Preview → …/derived/roundup/hero_closeup_2.mov</div><div class="chips"><span class="chip green">source preserved</span><span class="chip green">never overwrite</span><span class="chip green">digest verified</span></div><div><button class="mock-button">Export Copy</button></div></div></div></div>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-number">07</div>
+          <div class="step-copy">
+            <h3>Prepare stems handoff only when intended</h3>
+            <p>For eligible audio/video, click Prepare Stems Handoff and read the external-processing confirmation. This writes a manifest for the official Stem Studio MCP.</p>
+            <p class="expect"><b>Expected:</b> a unique manifest path—not separated stems.</p>
+            <p class="safety"><b>Safety:</b> no model, setup, upload, or processing starts. Official integration and execution are still not complete.</p>
+          </div>
+          <div class="mock-wrap">
+            <div class="mock-label">UI walkthrough mock · Stems handoff preview</div>
+            <div class="mock"><div class="mock-bar">Explicit confirmation required</div><div class="mock-body"><div class="inventory-line"><div class="chips"><span class="chip violet">stems eligible</span><span class="chip violet">manifest only</span></div><div class="path">Prepare for official Stem Studio MCP?</div><div class="mock-sub">External processing may receive the media. No model will run now.</div><div><button class="mock-button violet">Prepare Stems Handoff</button></div></div></div></div>
+          </div>
+        </article>
+      </template>
+    </section>
+
+    <section id="universal-clipper">
+      <div class="section-head">
+        <div><p class="label">Implemented package MVP</p><h2>Universal Clipper package</h2></div>
+        <p>The Library workflow builds one shallow, collision-safe package, validates official MCP stems, and serves a package-ID manifest to the native Premiere panel.</p>
+      </div>
+      <div class="truth-grid">
+        <article class="truth-card"><span class="status verified">Implemented</span><h3>Library → package</h3><ul><li>Select up to 500 Library clips and preview them grouped by source.</li><li>Create a unique package beneath <span class="mono">derived/universal-clipper/</span> while leaving originals unchanged.</li><li>Copy each full source and materialize each selected range through the adaptive smart-cut pipeline.</li></ul></article>
+        <article class="truth-card"><span class="status verified">Implemented</span><h3>Shallow handoff and clip sheets</h3><ul><li>Keep sibling source, clip, and available stem files adjacent in one flat <span class="mono">media/</span> folder.</li><li>Write linked JSON, CSV, and HTML clip sheets with ranges, labels, tags, AirTag lineage, and relationships.</li><li>Reveal the package, copy its folder path, open the clip sheet, or download CSV.</li></ul></article>
+        <article class="truth-card"><span class="status verified">Implemented layout</span><h3>Deterministic adjacent names</h3><pre class="package-code">scene137.mov
+scene137__SFX.wav
+scene137__clip-01.mov
+scene137__clip-01__SFX.wav
+clip-sheet.json</pre><div class="evidence">Real package behavior, shown below with synthetic fixtures. Only validated, existing stems appear as WAV files.</div></article>
+        <article class="truth-card"><span class="status trial">Setup required</span><h3>Full and clip-aligned stems</h3><ul><li>The official Stem Studio MCP runs only after confirmation and only when Python, dependencies, and the configured model cache all report present.</li><li>Full-source outputs remain beneath <span class="mono">derived/stems/</span>; clip stems are trimmed from them at exact rounded sample boundaries.</li><li>Offline guards force an incomplete model cache to fail instead of downloading weights.</li></ul><div class="evidence">Configured source MCP 1.0.0 connected successfully, but its source-cache model check failed closed. Live fixture: not run.</div></article>
+        <article class="truth-card"><span class="status trial">Build + mocks</span><h3>Native Premiere UXP panel</h3><ul><li>Targets Premiere Pro 25.6+ and uses documented project, bin, media-path, import, and sequence-editor APIs.</li><li>Canonical-path-first preview imports only missing assets into shallow source bins; retry is idempotent.</li><li>Plugin 0.1.0 rebuilt and verified against manifest v5, Premiere 25.6 minimum, and the sole loopback network permission.</li><li>Premiere 26.2.2 is installed/running; UXP Developer Tool is absent, so no project or timeline was touched.</li></ul></article>
+        <article class="truth-card"><span class="status not-built">Future</span><h3>Authoritative interchange</h3><ul><li>FCPXML or EDL generation waits for authoritative frame rate, rational frame times, and source timecode metadata.</li><li>Seconds remain canonical in the current clip sheet.</li><li>Interchange will require tested import behavior rather than fabricated timeline claims.</li></ul></article>
+      </div>
+      <p class="capture-note" style="margin-top:18px"><strong>Screenshot boundary:</strong> the captures below are the previous synthetic media-package UI, not proof of the new stems execution or Premiere panel. Current connector and plugin claims come from automated fixture/build results; no replacement screenshot is fabricated.</p>
+      <p class="evidence">No current Stem Studio execution or Premiere UXP screenshot is published here: neither external runtime was available, and an outdated or fabricated capture would overstate verification. The prior package-only captures remain in the tutorial artifact archive, not as current feature proof.</p>
+    </section>
+
+    <section id="roadmap">
+      <div class="section-head">
+        <div><p class="label">Evidence-driven gates</p><h2>Roadmap and honest progress</h2></div>
+        <p>Percentages are two different measures. Implementation coverage is not real-world confidence.</p>
+      </div>
+      <div class="progress-grid">
+        <article class="progress-card"><div class="progress-top"><h3>Local workflow implementation</h3><span class="progress-value">~97%</span></div><div class="progress-bar"><span style="--amount:97%"></span></div><p>Package preparation, strict project-local MCP configuration, offline model guards, state machine, validation/publication, authenticated package APIs, Clipper UI, and Premiere UXP plugin are implemented. Live model and host validation remain.</p></article>
+        <article class="progress-card"><div class="progress-top"><h3>Recorded workflow confidence</h3><span class="progress-value">~80%</span></div><div class="progress-bar"><span style="--amount:80%"></span></div><p>The official MCP now initializes and reports setup state on this Mac, while isolated package/stem/protocol/panel fixtures and builds pass. A model-ready configured cache and UXP Developer Tool are the remaining external gates.</p></article>
+      </div>
+      <div class="roadmap">
+        <article class="road-card">
+          <div><span class="status verified">Verified</span><h3>Local isolated MVP</h3></div>
+          <div><span class="road-label">Evidence</span><p>Four fixture safety tests pass for no-overwrite moves, source-preserving copies, and confirmed manifest creation.</p></div>
+          <div><span class="road-label">Exit criteria</span><p class="exit">Passed at utility/safety layer. UI and watcher behavior move to the trial gate.</p></div>
+        </article>
+        <article class="road-card next">
+          <div><span class="status trial">Next</span><h3>Small approved real-folder trial</h3></div>
+          <div><span class="road-label">Evidence needed</span><p>One disposable or backed-up folder explicitly chosen by the user; no broad home-folder scan.</p></div>
+          <div><span class="road-label">Exit criteria</span><p class="exit">Bounded seed completes; source files and timestamps remain unchanged; expected AirTags appear.</p></div>
+        </article>
+        <article class="road-card">
+          <div><span class="status verified">Verified</span><h3>GFun watcher route</h3></div>
+          <div><span class="road-label">Evidence</span><p>Downloads + fundrop report Watched on the live FSEvents backend with no watcher error.</p></div>
+          <div><span class="road-label">Boundary</span><p class="exit">Other broad roots remain inventory-only. Isolated testing proves same-identity atomic moves, not copy or transcode identity.</p></div>
+        </article>
+        <article class="road-card">
+          <div><span class="status verified">Recorded</span><h3>Two-hop media locator</h3></div>
+          <div><span class="road-label">Evidence</span><p>A seeded synthetic WAV moved through two external hops while the watcher stayed healthy.</p></div>
+          <div><span class="road-label">Result</span><p class="exit">Original path resolves to the current file with one AirTag UUID, full history, Copy path, and Reveal controls.</p></div>
+        </article>
+        <article class="road-card">
+          <div><span class="status trial">Later</span><h3>Full-library bounded seed</h3></div>
+          <div><span class="road-label">Evidence needed</span><p>Small trial metrics establish scan time, tag count, skips, and acceptable scope.</p></div>
+          <div><span class="road-label">Exit criteria</span><p class="exit">Approved roots seed in bounded batches with cancellation and no media mutation.</p></div>
+        </article>
+        <article class="road-card">
+          <div><span class="status trial">Setup required</span><h3>Official stem separation</h3></div>
+          <div><span class="road-label">Current state</span><p>Official MCP 1.0.0 is path-validated, configured, protocol-connected, and reports MPS/Python dependencies. The configured source model cache is absent, so the UI correctly stops at Setup required.</p></div>
+          <div><span class="road-label">Remaining boundary</span><p class="exit">Make the model available through Stem Studio's supported runtime, then perform one generated High fixture. Clipper's offline guards prevent an implicit download.</p></div>
+        </article>
+        <article class="road-card">
+          <div><span class="status not-built">Later</span><h3>Dropbox / Google Drive</h3></div>
+          <div><span class="road-label">Current state</span><p>Synced local folders can be trialed only as approved local paths. Cloud-native APIs and remote events do not exist.</p></div>
+          <div><span class="road-label">Exit criteria</span><p class="exit">Explicit adapter, auth isolation, remote move identity, conflict handling, and tests—without leaking parent environment.</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="references">
+      <div class="section-head">
+        <div><p class="label">Open modes</p><h2>App, assets, and source</h2></div>
+        <p>Relative links work from <span class="mono">file://</span> and from Vite’s <span class="mono">/roundup/status.html</span>.</p>
+      </div>
+      <div class="links">
+        <a class="link-card" href="../../?tab=roundup"><strong>Open the Roundup tab</strong><small>Use while Vite is serving the app.</small></a>
+        <a class="link-card" href="./lasso.svg"><strong>Exact supplied lasso.svg</strong><small>Vector mark used throughout this guide and the app.</small></a>
+        <a class="link-card" href="./lasso-spin.gif"><strong>Exact trimmed lasso-spin.gif</strong><small>Actual supplied animation used in the hero and locator demo.</small></a>
+        <a class="link-card" href="../../src/views/RoundupView.tsx"><strong>RoundupView.tsx</strong><small>Current UI source for roots, inventory, lookup, exports, and handoff.</small></a>
+        <a class="link-card" href="../../server/routes/roundup.ts"><strong>Roundup API routes</strong><small>Approval, watcher, inventory, lookup, export, and handoff endpoints.</small></a>
+        <a class="link-card" href="../../server/util/roundupInventory.test.ts"><strong>Isolated safety tests</strong><small>Evidence for the Verified claims above.</small></a>
+        <a class="link-card" href="../../docs/UNIVERSAL-CLIPPER.md"><strong>Universal Clipper contract</strong><small>Implemented package layout, stem validation, fidelity, and interchange boundary.</small></a>
+        <a class="link-card" href="../../server/util/universalClipper.test.ts"><strong>Universal Clipper tests</strong><small>Isolated planner, package, stem-return, and source-preservation evidence.</small></a>
+      </div>
+    </section>
+
+    <footer>public/roundup/status.html · official MCP protocol connected/setup-required · Premiere 26.2.2 detected · UXP tool absent · no live model, upload, credentials, user media, or Adobe project touched</footer>
+  </main>
+
+  <script>
+    /*
+     * LOCATOR DEMO STORYBOARD
+     *
+     * Read top-to-bottom. Each `at` value is ms after replay.
+     *
+     *    0ms   old media path is ready
+     *  900ms   lookup returns the current AirTag match
+     * 1900ms   life history opens
+     * 3000ms   Copy path and Reveal actions become the focus
+     */
+    const DEMO_TIMING = {
+      pathReady:  0,
+      matchFound: 900,
+      trailOpen:  1900,
+      actions:    3000,
+    };
+    const DEMO_STAGES = [
+      { key: "pathReady", label: "Missing path" },
+      { key: "matchFound", label: "Current match" },
+      { key: "trailOpen", label: "Life history" },
+      { key: "actions", label: "Copy or reveal" },
+    ];
+    const demo = document.querySelector("#locator-demo");
+    const replay = document.querySelector("#demo-replay");
+    const dots = demo?.querySelector(".demo-dots");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let timers = [];
+    let stage = 0;
+
+    function setDemoStage(nextStage) {
+      stage = nextStage;
+      demo?.setAttribute("data-stage", String(stage));
+      dots?.querySelectorAll(".demo-dot").forEach((dot, index) => {
+        dot.classList.toggle("active", index === stage);
+        dot.setAttribute("aria-current", index === stage ? "step" : "false");
+      });
+    }
+
+    function playDemo() {
+      timers.forEach(window.clearTimeout);
+      timers = [];
+      setDemoStage(0);
+      if (reduceMotion) return;
+      DEMO_STAGES.slice(1).forEach((item, index) => {
+        timers.push(window.setTimeout(() => setDemoStage(index + 1), DEMO_TIMING[item.key]));
+      });
+    }
+
+    DEMO_STAGES.forEach((item, index) => {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "demo-dot";
+      dot.setAttribute("aria-label", item.label);
+      dot.addEventListener("click", () => {
+        timers.forEach(window.clearTimeout);
+        timers = [];
+        setDemoStage(index);
+      });
+      dots?.appendChild(dot);
+    });
+    replay?.addEventListener("click", playDemo);
+    setDemoStage(reduceMotion ? 3 : 0);
+
+    if (!reduceMotion && demo) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          playDemo();
+          observer.disconnect();
+        }
+      }, { threshold: .45 });
+      observer.observe(demo);
+    }
+  </script>
+</body>
+</html>

@@ -11,6 +11,9 @@ import {
 import { ffmpeg } from "../ffmpeg.js";
 import { pathToId, safeFilename } from "../util/id.js";
 import { derivePromptString, readPngInfo } from "../util/pngInfo.js";
+import { appendRoundupEvent } from "../util/roundup.js";
+import { moveFileNoReplace } from "../util/nonLossyMove.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 
@@ -91,8 +94,10 @@ function readMeta(id: string): ImageMeta | null {
   }
 }
 
-function writeMeta(meta: ImageMeta) {
-  fs.writeFileSync(metaPathFor(meta.id), JSON.stringify(meta, null, 2));
+function writeMeta(meta: ImageMeta, exclusive = false) {
+  fs.writeFileSync(metaPathFor(meta.id), JSON.stringify(meta, null, 2), {
+    flag: exclusive ? "wx" : "w",
+  });
 }
 
 function defaultName(file: string): string {
@@ -310,7 +315,7 @@ router.post("/images/folders", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: err instanceof Error ? err.message : String(err) });
+      .json({ error: publicError(err, "images:resolve-folder") });
     return;
   }
   if (abs === config.imagesDir) {
@@ -320,7 +325,7 @@ router.post("/images/folders", (req, res) => {
   try {
     fs.mkdirSync(abs, { recursive: true });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "images:create-folder") });
     return;
   }
   res.json({
@@ -344,7 +349,7 @@ router.delete("/images/folders", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: err instanceof Error ? err.message : String(err) });
+      .json({ error: publicError(err, "images:resolve-folder") });
     return;
   }
   if (abs === config.imagesDir) {
@@ -362,7 +367,7 @@ router.delete("/images/folders", (req, res) => {
       // Tolerate macOS .DS_Store as "still empty".
       .filter((n) => !n.startsWith("."));
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "images:read-folder") });
     return;
   }
   if (entries.length > 0) {
@@ -376,7 +381,7 @@ router.delete("/images/folders", (req, res) => {
   try {
     fs.rmdirSync(abs);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "images:delete-folder") });
     return;
   }
   res.json({ ok: true });
@@ -438,7 +443,9 @@ router.post("/images/upload", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: `multipart parse failed: ${String(err)}` });
+      .json({
+        error: `multipart parse failed: ${publicError(err, "images:upload-parse")}`,
+      });
     return;
   }
 
@@ -499,14 +506,14 @@ router.post("/images/upload", (req, res) => {
     try {
       folderAbs = resolveFolder(folderRel);
     } catch (err) {
-      abort(400, err instanceof Error ? err.message : String(err));
+      abort(400, publicError(err, "images:resolve-folder"));
       fileStream.resume();
       return;
     }
     try {
       fs.mkdirSync(folderAbs, { recursive: true });
     } catch (err) {
-      abort(500, `mkdir failed: ${String(err)}`);
+      abort(500, `mkdir failed: ${publicError(err, "images:upload-mkdir")}`);
       fileStream.resume();
       return;
     }
@@ -558,7 +565,7 @@ router.post("/images/upload", (req, res) => {
         } catch (err) {
           rejected.push({
             name: original,
-            reason: `rename failed: ${String(err)}`,
+            reason: `rename failed: ${publicError(err, "images:upload-rename")}`,
           });
           try {
             fs.unlinkSync(tmpAbs);
@@ -574,7 +581,7 @@ router.post("/images/upload", (req, res) => {
   });
 
   bb.on("error", (err: unknown) => {
-    abort(400, `upload error: ${String(err)}`);
+    abort(400, `upload error: ${publicError(err, "images:upload")}`);
   });
 
   bb.on("close", async () => {
@@ -621,10 +628,14 @@ function moveOne(meta: ImageMeta, folderAbs: string): ListedImage {
     const stat = fs.statSync(meta.path);
     return listedFor(meta, stat);
   }
-  fs.renameSync(meta.path, destAbs);
-  // Re-id under the new path.
-  const newId = pathToId(destAbs);
+  const oldPath = meta.path;
   const oldId = meta.id;
+  const newId = pathToId(destAbs);
+  if (newId !== oldId && fs.existsSync(metaPathFor(newId))) {
+    throw new Error("destination metadata already exists");
+  }
+  moveFileNoReplace(meta.path, destAbs);
+  // Re-id under the new path.
   // Best-effort: relocate the cached thumb so the user doesn't see a flash.
   try {
     const oldThumb = thumbPathFor(oldId);
@@ -634,19 +645,44 @@ function moveOne(meta: ImageMeta, folderAbs: string): ListedImage {
   } catch {
     // ignore
   }
-  // Remove old sidecar; write new one.
-  try {
-    fs.unlinkSync(metaPathFor(oldId));
-  } catch {
-    // ignore
-  }
   const updated: ImageMeta = {
     ...meta,
     id: newId,
     path: destAbs,
     updated: Date.now(),
   };
-  writeMeta(updated);
+  try {
+    writeMeta(updated, newId !== oldId);
+  } catch (error) {
+    try {
+      moveFileNoReplace(destAbs, oldPath);
+    } catch (rollback) {
+      throw new Error(
+        `image metadata update failed and media rollback needs attention: ${publicError(error, "images:move-metadata")}; ${publicError(rollback, "images:move-rollback")}`
+      );
+    }
+    throw new Error(
+      `image metadata update failed; media move was rolled back: ${publicError(error, "images:move-metadata")}`
+    );
+  }
+  if (newId !== oldId) {
+    try {
+      fs.unlinkSync(metaPathFor(oldId));
+    } catch {
+      // The new sidecar is complete; retaining the old one is non-lossy.
+    }
+  }
+  appendRoundupEvent({
+    kind: "image_move",
+    entityType: "image",
+    oldPath,
+    newPath: destAbs,
+    oldName: path.basename(oldPath),
+    newName: path.basename(destAbs),
+    oldId,
+    newId,
+    triggeredBy: "user",
+  });
   const stat = fs.statSync(destAbs);
   return listedFor(updated, stat);
 }
@@ -667,7 +703,7 @@ router.post("/images/move", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: err instanceof Error ? err.message : String(err) });
+      .json({ error: publicError(err, "images:resolve-folder") });
     return;
   }
   const items: ListedImage[] = [];
@@ -683,7 +719,7 @@ router.post("/images/move", (req, res) => {
     } catch (err) {
       errors.push({
         id,
-        error: err instanceof Error ? err.message : String(err),
+        error: publicError(err, "images:move"),
       });
     }
   }
@@ -707,7 +743,7 @@ router.post("/images/:id/move", (req, res) => {
   } catch (err) {
     res
       .status(400)
-      .json({ error: err instanceof Error ? err.message : String(err) });
+      .json({ error: publicError(err, "images:resolve-folder") });
     return;
   }
   try {
@@ -716,7 +752,7 @@ router.post("/images/:id/move", (req, res) => {
   } catch (err) {
     res
       .status(500)
-      .json({ error: err instanceof Error ? err.message : String(err) });
+      .json({ error: publicError(err, "images:move") });
   }
 });
 
@@ -757,11 +793,16 @@ router.get("/images/thumb/:id", async (req, res) => {
         cachePath,
       ]);
       if (r.code !== 0) {
-        res.status(500).json({ error: r.stderr || "thumb generation failed" });
+        // ffmpeg names the input file in almost every diagnostic it prints.
+        res.status(500).json({
+          error: r.stderr
+            ? publicError(r.stderr, "images:thumb")
+            : "thumb generation failed",
+        });
         return;
       }
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicError(err, "images:thumb") });
       return;
     }
   }

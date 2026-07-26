@@ -17,6 +17,7 @@ import {
 import { extractFrameJpeg } from "../ffmpeg.js";
 import { resolvePoolId } from "./pool.js";
 import { appendActivity } from "../util/activity.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 
@@ -168,7 +169,7 @@ router.post("/characters/:id/refs", async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "characters:add-ref") });
   } finally {
     // Only delete if we created a one-off temp file (not the cached sample frame).
     if (tmpFrame && tmpFrame.includes("ref-")) {

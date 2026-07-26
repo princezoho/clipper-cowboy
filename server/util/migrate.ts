@@ -3,6 +3,8 @@ import path from "node:path";
 import os from "node:os";
 import { config, SUPPRESSED_TAGS } from "../config.js";
 import { scheduleShotlistRebuild } from "./shotlist.js";
+import { appendRoundupEvent } from "./roundup.js";
+import { moveFileNoReplace } from "./nonLossyMove.js";
 
 interface LegacyMeta {
   id: string;
@@ -40,7 +42,7 @@ function uniqueDest(dir: string, base: string, ext: string): string {
 function moveOrSkip(src: string, dest: string): string {
   // If both source and dest exist (e.g. dest already moved), skip.
   if (!fs.existsSync(src)) return fs.existsSync(dest) ? dest : src;
-  fs.renameSync(src, dest);
+  moveFileNoReplace(src, dest);
   return dest;
 }
 
@@ -73,6 +75,7 @@ export function migrateLegacyLibrary(): { moved: number; scanned: number } {
 
       try {
         // Move the clip file
+        const oldClipPath = meta.path;
         const ext = path.extname(meta.path);
         const base = path.basename(meta.path, ext);
         let newClipPath: string;
@@ -102,6 +105,17 @@ export function migrateLegacyLibrary(): { moved: number; scanned: number } {
           sourceCopyPath: newSourceCopyPath,
         };
         fs.writeFileSync(newMetaPath, JSON.stringify(updated, null, 2));
+        appendRoundupEvent({
+          kind: "library_rename",
+          entityType: "library",
+          oldPath: oldClipPath,
+          newPath: newClipPath,
+          oldName: path.basename(oldClipPath),
+          newName: path.basename(newClipPath),
+          oldId: meta.id,
+          newId: meta.id,
+          triggeredBy: "migration",
+        });
         try {
           fs.unlinkSync(legacyMetaPath);
         } catch {

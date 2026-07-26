@@ -19,6 +19,7 @@ import {
 import { analyzeSource } from "../ai/poolAnalyze.js";
 import { appendActivity } from "../util/activity.js";
 import { getOpenAIClientError, sendOpenAIClientError } from "../openai.js";
+import { publicError } from "../util/publicError.js";
 
 /*
  * Routes that drive AI-powered source-level tagging:
@@ -114,7 +115,7 @@ router.get("/pool/:id/meta", (req, res) => {
     }
     res.json(readSourceMeta(req.params.id));
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:read-meta") });
   }
 });
 
@@ -148,7 +149,7 @@ router.patch("/pool/:id/meta", (req, res) => {
     const next = writeSourceMeta(req.params.id, parsed.data);
     res.json(next);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:write-meta") });
   }
 });
 
@@ -163,7 +164,7 @@ router.post("/pool/:id/analyze", async (req, res) => {
     res.json(meta);
   } catch (err) {
     if (sendOpenAIClientError(res, err)) return;
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "pool:analyze") });
   }
 });
 
@@ -288,7 +289,7 @@ router.post("/pool/analyze-batch", (req, res) => {
         job.items.push({ id, ok: true });
       } catch (err) {
         const openAIError = getOpenAIClientError(err);
-        const msg = openAIError?.message ?? (err instanceof Error ? err.message : String(err));
+        const msg = openAIError?.message ?? publicError(err, "pool:analyze-batch");
         job.errors.push({ id, error: msg });
         job.items.push({ id, ok: false });
       } finally {

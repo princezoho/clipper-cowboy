@@ -1,0 +1,12 @@
+{
+  "name": "clipper-cowboy-premiere-uxp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universal Clipper intelligent import panel for Adobe Premiere Pro",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node --test test/*.test.cjs",
+    "lint": "node scripts/lint.cjs"
+  }
+}

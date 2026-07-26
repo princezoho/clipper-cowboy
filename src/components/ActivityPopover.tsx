@@ -203,6 +203,7 @@ const ICON: Record<ActivityKind, string> = {
   source_batch_started: "🤖",
   pool_source_moved: "📂",
   pool_organize_analyzed: "🤖",
+  universal_package_created: "🪢",
 };
 
 function describeEvent(event: ActivityEvent): {

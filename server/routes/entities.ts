@@ -9,6 +9,7 @@ import {
   updateEntity,
 } from "../util/entities.js";
 import { appendActivity, ActivityKind } from "../util/activity.js";
+import { publicError } from "../util/publicError.js";
 
 /**
  * Build a CRUD router for one entity catalog (Scenes or Objects). Mirrors the
@@ -38,7 +39,7 @@ function makeEntityRouter(kind: EntityKind): Router {
       appendActivity(created, { id: e.id, name: e.name });
       res.json(e);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicError(err, `${kind}:create`) });
     }
   });
 

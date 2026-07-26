@@ -6,6 +6,11 @@ import {
   LibraryItem,
   NamedRef,
   OrphanFile,
+  UniversalPackageJob,
+  UniversalPlan,
+  UniversalStemConnectorStatus,
+  UniversalStemJob,
+  UniversalStemQuality,
   adoptOrphans,
   copyLibraryToClipboard,
   createCharacter,
@@ -18,10 +23,19 @@ import {
   formatDuration,
   formatTime,
   patchLibraryItem,
+  prepareUniversalPackage,
+  previewUniversalPackage,
   renameLibraryItem,
   repairMissingLibrary,
   revealLibrarySelectionInFinder,
+  revealUniversalPackage,
   sendLibraryToPremiere,
+  cancelUniversalPackageJob,
+  fetchUniversalPackageJob,
+  fetchUniversalStemConnectorStatus,
+  fetchUniversalStemJob,
+  separateUniversalPackageStems,
+  cancelUniversalStemJob,
   trashOrphans,
 } from "../lib/api";
 import { fireToast } from "../lib/toast";
@@ -95,6 +109,7 @@ export default function LibraryView({
   const [exportContext, setExportContext] = useState<null | "filter" | "selection">(
     null
   );
+  const [universalClipperOpen, setUniversalClipperOpen] = useState(false);
   // ---- Multi-select state for batch copy / reveal / export ----------------
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -867,6 +882,16 @@ export default function LibraryView({
               </button>
               <button
                 type="button"
+                onClick={() => setUniversalClipperOpen(true)}
+                disabled={selectedIds.size === 0 || busyAction !== null}
+                data-testid="universal-clipper-btn"
+                className="rounded-md bg-amber-400 px-3 py-1.5 text-xs font-bold text-black shadow-sm ring-1 ring-amber-200/40 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Build one flat Finder package with full sources, clips, manifests, and validated or planned stems"
+              >
+                Universal Clipper…
+              </button>
+              <button
+                type="button"
                 onClick={handleCopySelection}
                 disabled={selectedIds.size === 0 || !isMacPlatform || busyAction !== null}
                 data-testid="library-copy-btn"
@@ -1081,6 +1106,12 @@ export default function LibraryView({
           })}
         />
       )}
+      {universalClipperOpen && (
+        <UniversalClipperModal
+          ids={Array.from(selectedIds)}
+          onClose={() => setUniversalClipperOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -1124,6 +1155,437 @@ function FilterChip({
         ×
       </button>
     </span>
+  );
+}
+
+function UniversalClipperModal({
+  ids,
+  onClose,
+}: {
+  ids: string[];
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("premiere-handoff");
+  const [plan, setPlan] = useState<UniversalPlan | null>(null);
+  const [job, setJob] = useState<UniversalPackageJob | null>(null);
+  const [stemJob, setStemJob] = useState<UniversalStemJob | null>(null);
+  const [connector, setConnector] =
+    useState<UniversalStemConnectorStatus | null>(null);
+  const [stemQuality, setStemQuality] =
+    useState<UniversalStemQuality>("high");
+  const [confirmedModelExecution, setConfirmedModelExecution] = useState(false);
+  const [confirmedMaxLicense, setConfirmedMaxLicense] = useState(false);
+  const [stemBusy, setStemBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      previewUniversalPackage(ids, name)
+        .then((next) => {
+          if (active) {
+            setPlan(next);
+            setError(null);
+          }
+        })
+        .catch((caught) => active && setError(String(caught)))
+        .finally(() => active && setLoading(false));
+    }, 200);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [ids.join(","), name]);
+
+  useEffect(() => {
+    if (!job || (job.status !== "queued" && job.status !== "running")) return;
+    const timer = window.setInterval(() => {
+      fetchUniversalPackageJob(job.id)
+        .then(setJob)
+        .catch((caught) => setError(String(caught)));
+    }, 800);
+    return () => window.clearInterval(timer);
+  }, [job?.id, job?.status]);
+
+  useEffect(() => {
+    if (!stemJob || !["queued", "checking_setup", "running", "validating"].includes(stemJob.status)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      fetchUniversalStemJob(stemJob.id)
+        .then(setStemJob)
+        .catch((caught) => setError(String(caught)));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [stemJob?.id, stemJob?.status]);
+
+  useEffect(() => {
+    if (!job?.packageId || job.status !== "done") return;
+    let active = true;
+    fetchUniversalStemConnectorStatus()
+      .then((status) => active && setConnector(status))
+      .catch((caught) => active && setError(String(caught)));
+    return () => {
+      active = false;
+    };
+  }, [job?.packageId, job?.status]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function prepare() {
+    if (!plan) return;
+    setError(null);
+    try {
+      setJob(await prepareUniversalPackage(ids, name));
+    } catch (caught) {
+      setError(String(caught));
+    }
+  }
+
+  async function separateStems() {
+    if (
+      !job?.packageId ||
+      !confirmedModelExecution ||
+      (stemQuality === "max" && !confirmedMaxLicense)
+    ) {
+      return;
+    }
+    setStemBusy(true);
+    setError(null);
+    try {
+      setStemJob(
+        await separateUniversalPackageStems(
+          job.packageId,
+          stemQuality,
+          confirmedMaxLicense
+        )
+      );
+    } catch (caught) {
+      setError(String(caught));
+    } finally {
+      setStemBusy(false);
+    }
+  }
+
+  const terminal =
+    job?.status === "done" || job?.status === "cancelled" || job?.status === "error";
+  const packageReady = Boolean(job?.folder);
+  const premiereReady = stemJob?.status === "ready";
+  const connectorStateLabel =
+    connector?.state === "live_fixture_verified"
+      ? "Live fixture verified"
+      : connector?.state === "ready"
+        ? "Ready"
+        : connector?.state === "setup_required"
+          ? "Setup required"
+          : connector?.state === "unavailable"
+            ? "Unavailable"
+            : "Not configured";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-5"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-amber-500/30 bg-ink-900 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-ink-800 px-5 py-3">
+          <div>
+            <div className="font-serif text-lg font-semibold text-amber-200">
+              Universal Clipper
+            </div>
+            <div className="text-xs text-ink-400">
+              Prepare media, separate stems, then import intelligently in Premiere
+            </div>
+          </div>
+          <button onClick={onClose} className="text-ink-400 hover:text-white">✕</button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          {!job && (
+            <label className="grid gap-1 text-xs text-ink-400">
+              Package name
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className="rounded bg-ink-800 px-3 py-2 font-mono text-sm text-ink-100 ring-1 ring-ink-700 focus:outline-none focus:ring-amber-400"
+              />
+            </label>
+          )}
+
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-100">
+            Creates new files under <code>derived/universal-clipper/</code>.
+            Originals remain unchanged. The Premiere UXP panel reads the safe
+            package ID and imports only missing assets. Finder remains a fallback.
+          </div>
+
+          {loading && !job && <div className="text-sm text-ink-400">Planning package…</div>}
+
+          {plan && !job && (
+            <>
+              <div className="flex gap-2 text-xs">
+                <span className="rounded bg-amber-400 px-2 py-1 font-semibold text-black">
+                  {plan.selectedClipCount} clips
+                </span>
+                <span className="rounded bg-ink-800 px-2 py-1 text-ink-200">
+                  {plan.sourceCount} sources
+                </span>
+                <span className="rounded bg-ink-800 px-2 py-1 text-ink-200">
+                  {plan.expectedAssetCount} planned assets
+                </span>
+              </div>
+              <div className="space-y-3">
+                {plan.sources.map((source) => (
+                  <div
+                    key={source.groupId}
+                    className="rounded-lg border border-ink-700 bg-ink-950/50 p-3"
+                  >
+                    <div className="mb-2 font-mono text-xs font-semibold text-amber-200">
+                      {source.fullSourceFilename}
+                    </div>
+                    <div className="space-y-1 font-mono text-[11px] text-ink-300">
+                      {source.stems.map((stem) => (
+                        <div key={stem.filename}>↳ {stem.filename} · planned</div>
+                      ))}
+                      {source.clips.map((clip) => (
+                        <div key={clip.clipId} className="mt-2 border-l border-amber-500/40 pl-2">
+                          <div className="text-ink-100">{clip.outputFilename}</div>
+                          {clip.stems.map((stem) => (
+                            <div key={stem.filename} className="text-ink-400">
+                              ↳ {stem.filename} · validated existing or planned
+                            </div>
+                          ))}
+                          <div className="mt-1 text-[10px] text-ink-500">
+                            {clip.inSeconds.toFixed(3)}–{clip.outSeconds.toFixed(3)}s · adaptive smart-cut
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-ink-200">
+                <strong>Prepare media</strong> copies each full source and creates
+                every selected clip range first. It does not run a model, upload
+                media, install software, or download weights.
+              </div>
+            </>
+          )}
+
+          {job && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-ink-200">{job.stage}</span>
+                <span className="font-mono text-amber-200">{job.percent}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-ink-800">
+                <div
+                  className="h-full bg-amber-400 transition-all"
+                  style={{ width: `${job.percent}%` }}
+                />
+              </div>
+              {job.folder && (
+                <div className="break-all rounded bg-ink-950 p-2 font-mono text-xs text-ink-300">
+                  {job.folder}
+                </div>
+              )}
+              {job.status === "done" && (
+                <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                  Media prepared. Package ID:{" "}
+                  <code>{job.packageId ?? "loading…"}</code>
+                </div>
+              )}
+              {job.status === "done" && job.packageId && (
+                <div className="space-y-3 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-semibold text-violet-100">
+                        Separate stems with official Stem Studio MCP
+                      </div>
+                      <span
+                        className={
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
+                          (connector?.ready
+                            ? "border-emerald-500/50 text-emerald-300"
+                            : connector?.setupRequired
+                              ? "border-amber-500/50 text-amber-300"
+                              : "border-ink-600 text-ink-300")
+                        }
+                      >
+                        {connector ? connectorStateLabel : "Checking"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-ink-400">
+                      {connector?.message ?? "Checking connector…"}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(["high", "max"] as UniversalStemQuality[]).map((quality) => (
+                      <button
+                        key={quality}
+                        type="button"
+                        onClick={() => {
+                          setStemQuality(quality);
+                          if (quality !== "max") setConfirmedMaxLicense(false);
+                        }}
+                        className={`rounded px-3 py-1.5 text-xs font-semibold ${
+                          stemQuality === quality
+                            ? "bg-violet-300 text-black"
+                            : "border border-ink-600 text-ink-200"
+                        }`}
+                      >
+                        {quality === "high" ? "High · recommended" : "Max · licensed opt-in"}
+                      </button>
+                    ))}
+                  </div>
+                  {stemQuality === "max" && (
+                    <label className="flex items-start gap-2 text-xs text-amber-100">
+                      <input
+                        type="checkbox"
+                        checked={confirmedMaxLicense}
+                        onChange={(event) => setConfirmedMaxLicense(event.target.checked)}
+                        className="mt-0.5 accent-amber-400"
+                      />
+                      I explicitly choose Max and accept its separate upstream
+                      model licensing requirements.
+                    </label>
+                  )}
+                  <label className="flex items-start gap-2 text-xs text-ink-200">
+                    <input
+                      type="checkbox"
+                      checked={confirmedModelExecution}
+                      onChange={(event) => setConfirmedModelExecution(event.target.checked)}
+                      className="mt-0.5 accent-violet-300"
+                    />
+                    Run local model execution on the prepared package media. No
+                    external upload is performed by this connector.
+                  </label>
+                  {stemJob && (
+                    <div className="rounded bg-ink-950 p-2 text-xs">
+                      <div className="flex justify-between text-ink-200">
+                        <span>{stemJob.stage}</span>
+                        <span className="font-mono">{stemJob.percent}%</span>
+                      </div>
+                      <div className="mt-1 text-ink-400">{stemJob.message}</div>
+                    </div>
+                  )}
+                  {premiereReady && (
+                    <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-sm text-emerald-100">
+                      Ready for Premiere. Open the Universal Clipper panel and
+                      choose this package ID.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-ink-800 px-5 py-3">
+          {!job && (
+            <button
+              onClick={prepare}
+              disabled={!plan || loading}
+              className="rounded-md bg-amber-400 px-4 py-2 text-sm font-bold text-black hover:bg-amber-300 disabled:opacity-40"
+            >
+              Prepare media
+            </button>
+          )}
+          {job && !terminal && (
+            <button
+              onClick={() => cancelUniversalPackageJob(job.id).then(setJob)}
+              className="rounded-md border border-ink-600 px-3 py-2 text-sm text-ink-200 hover:bg-ink-800"
+            >
+              Cancel after current file
+            </button>
+          )}
+          {packageReady && job && (
+            <>
+              {job.packageId &&
+                (!stemJob ||
+                  ["setup_required", "cancelled", "interrupted", "error"].includes(
+                    stemJob.status
+                  )) && (
+                  <button
+                    onClick={separateStems}
+                    disabled={
+                      stemBusy ||
+                      !confirmedModelExecution ||
+                      (stemQuality === "max" && !confirmedMaxLicense)
+                    }
+                    className="rounded-md bg-violet-300 px-4 py-2 text-sm font-bold text-black hover:bg-violet-200 disabled:opacity-40"
+                  >
+                    {stemBusy ? "Starting…" : "Separate stems"}
+                  </button>
+                )}
+              {stemJob &&
+                ["queued", "checking_setup", "running", "validating"].includes(
+                  stemJob.status
+                ) && (
+                  <button
+                    onClick={() => cancelUniversalStemJob(stemJob.id).then(setStemJob)}
+                    className="rounded-md border border-violet-500/50 px-3 py-2 text-sm text-violet-100 hover:bg-violet-500/10"
+                  >
+                    Cancel stem job
+                  </button>
+                )}
+              <button
+                onClick={() => revealUniversalPackage(job.id)}
+                className="rounded-md bg-amber-400 px-4 py-2 text-sm font-bold text-black hover:bg-amber-300"
+              >
+                Reveal package in Finder
+              </button>
+              <button
+                onClick={() => void navigator.clipboard.writeText(job.folder!)}
+                className="rounded-md border border-ink-600 px-3 py-2 text-sm text-ink-200 hover:bg-ink-800"
+              >
+                Copy Finder fallback path
+              </button>
+              <button
+                onClick={() =>
+                  window.open(`/api/universal-clipper/jobs/${job.id}/clip-sheet.html`, "_blank")
+                }
+                className="rounded-md border border-ink-600 px-3 py-2 text-sm text-ink-200 hover:bg-ink-800"
+              >
+                Open clip sheet
+              </button>
+              <button
+                onClick={() =>
+                  void navigator.clipboard.writeText(
+                    `Open Window → UXP Plugins → Universal Clipper in Premiere Pro 25.6+, connect to http://127.0.0.1:47474, then choose package ${job.packageId ?? ""}.`
+                  )
+                }
+                className="rounded-md border border-ink-600 px-3 py-2 text-sm text-ink-200 hover:bg-ink-800"
+              >
+                Copy Premiere panel steps
+              </button>
+              <a
+                href={`/api/universal-clipper/jobs/${job.id}/clip-sheet.csv`}
+                className="rounded-md border border-ink-600 px-3 py-2 text-sm text-ink-200 hover:bg-ink-800"
+              >
+                Download CSV
+              </a>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

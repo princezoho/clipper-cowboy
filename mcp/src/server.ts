@@ -543,7 +543,7 @@ export function createServer(
     title: "Search exported clips",
     description:
       "Search the Clipper library by text, source ID, or tags. Returns canonical local " +
-      "output paths suitable for Clipper Cowboy's managed audio splitting. Unsafe sidecar paths are rejected.",
+      "output paths suitable for the official Stem Studio MCP handoff or Universal Clipper. Unsafe sidecar paths are rejected.",
     inputSchema: {
       query: z.string().max(200).optional(),
       source_id: z.string().optional(),

@@ -12,6 +12,7 @@ import {
   sendOpenAIClientError,
 } from "../openai.js";
 import { listCharacters, listRefs } from "../util/characters.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 
@@ -117,7 +118,7 @@ router.post("/caption", async (req, res) => {
     });
   } catch (err) {
     if (sendOpenAIClientError(res, err)) return;
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "caption") });
   }
   // NOTE: deliberately not deleting frames here — they live until
   // cleanOldCaptionDirs() reaps them (1h TTL) so the UI can promote them

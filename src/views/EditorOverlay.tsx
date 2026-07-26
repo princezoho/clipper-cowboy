@@ -1061,16 +1061,13 @@ function AudioSplittingSetupModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <div className="w-full max-w-md rounded-xl border border-ink-800 bg-ink-900 shadow-xl" role="dialog" aria-modal="true">
         <div className="space-y-3 px-5 py-5">
-          <h2 className="text-base font-semibold">Set up audio splitting</h2>
-          <p className="text-sm leading-5 text-ink-300">{status ?? "Audio splitting is not available in this build yet."}</p>
-          <p className="text-xs leading-5 text-ink-500">Setup creates a Clipper Cowboy-managed Python 3.11 environment, installs the pinned Demucs engine, and downloads its model before enabling exports.</p>
+          <h2 className="text-base font-semibold">Use Universal Clipper for stems</h2>
+          <p className="text-sm leading-5 text-ink-300">{status ?? "Export first, then select clips in Library and open Universal Clipper."}</p>
+          <p className="text-xs leading-5 text-ink-500">Clipper never installs Stem Studio or downloads models. Complete setup in Stem Studio itself, then use the confirmation-gated official MCP flow.</p>
           {error && <div className="rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{error}</div>}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-5 py-3">
           <button className="rounded px-3 py-1.5 text-sm text-ink-300 hover:text-ink-100" onClick={onNotNow} disabled={busy}>Not now</button>
-          <button className="rounded bg-accent-500 px-4 py-1.5 text-sm font-medium text-black hover:bg-accent-400 disabled:opacity-50" onClick={onInstall} disabled={busy}>
-            {busy ? "Setting up…" : "Install Demucs model"}
-          </button>
         </div>
       </div>
     </div>

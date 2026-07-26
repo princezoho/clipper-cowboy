@@ -32,6 +32,7 @@ export type ActivityKind =
   | "source_batch_started"
   | "pool_source_moved"
   | "pool_organize_analyzed"
+  | "universal_package_created"
   | "stems_queued"
   | "stems_completed"
   | "stems_failed";

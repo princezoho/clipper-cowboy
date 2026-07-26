@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { z } from "zod";
 import { config } from "../config.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 const ENV_PATH = path.resolve(process.cwd(), ".env");
@@ -45,7 +46,6 @@ function writeEnvFile(values: Record<string, string>) {
     "OPENAI_API_KEY",
     "PROJECT_DIR",
     "PORT",
-    "CLIPPER_STEMS_TIMEOUT_MINUTES",
   ];
   const lines: string[] = [];
   for (const k of known) {
@@ -119,7 +119,9 @@ router.post("/settings", (req, res) => {
       try {
         fs.mkdirSync(p, { recursive: true });
       } catch (err) {
-        res.status(400).json({ error: `Could not create PROJECT_DIR: ${err}` });
+        res.status(400).json({
+          error: `Could not create PROJECT_DIR: ${publicError(err, "settings:mkdir")}`,
+        });
         return;
       }
     }

@@ -116,10 +116,11 @@ selection. The included local MCP server can also let Codex and other compatible
 agents inspect sources, search clips, update metadata, export clips, and request
 explicitly confirmed OpenAI analysis. Start with the [MCP guide](./mcp/README.md).
 
-Audio splitting is a built-in local capability. Its managed worker is adapted
-from [Stem Studio](https://github.com/wassermanproductions/stem-studio) source;
-it is not a separate app, checkout, or MCP dependency. See
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Universal Clipper can run audio separation through
+[Stem Studio](https://github.com/wassermanproductions/stem-studio)'s official
+stdio MCP after explicit confirmation. Clipper does not vendor its worker,
+install dependencies, or download models. See
+[docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 ## Privacy and security
 
@@ -144,7 +145,9 @@ Security-first defaults:
 - **No API keys are committed in this repository.**
 - `OPENAI_API_KEY` is optional; without it, AI features are disabled while core
   review, editing, cataloging, and export workflows continue.
-- Settings save local configuration to an ignored `.env` file.
+- Project/API settings use an ignored `.env` file. The Stem Studio connector
+  stores only its validated canonical entry path under
+  `PROJECT_DIR/.clipcataloger/integrations.json`.
 - The API binds to `127.0.0.1`; do not expose it through a tunnel or reverse
   proxy.
 
@@ -153,25 +156,24 @@ Security-first defaults:
 | `PROJECT_DIR` | no | Project folder. Defaults to `~/ClipCataloger`. |
 | `OPENAI_API_KEY` | no | Optional GPT-4o calls for captioning and recognition. |
 | `PORT` | no | Production server port. Defaults to `47474`. |
-| `CLIPPER_STEMS_TIMEOUT_MINUTES` | no | Per-job safety timeout; defaults to 360 minutes. |
+| `STEMSTUDIO_MCP_ENTRY` | no | Legacy fallback for an official packaged launcher or source `mcp/dist/index.js`; prefer Settings → Stem Studio MCP connector. |
 
 See [`.env.example`](./.env.example) for the documented placeholder template.
 
-### Background audio stems
+### Universal Clipper stems
 
-Choose **Split audio stems** on a **Clip** or **Clip + Source** export. The
-first use explicitly creates Clipper Cowboy's managed Python 3.11 environment,
-installs the pinned Demucs engine, and downloads the Fast `htdemucs` model
-before the checkbox is enabled. Clipper processes one local job at a time and
-publishes verified outputs under
-`PROJECT_DIR/derived/stems/`; a stem failure does not invalidate the clip
-export. No hosted key is required for separation, and no keys are passed to the
-audio process.
+Export clips normally, select them in Library, and open **Universal Clipper**.
+After media preparation, explicitly confirm local model execution and choose
+High (recommended) or Max (separate licensing confirmation). Clipper processes
+one official Stem Studio MCP job at a time, keeps its outputs beneath
+`PROJECT_DIR/derived/stems/`, derives sample-aligned clip stems, and publishes
+only a complete validated batch into the flat Premiere package.
 
-Fast uses `htdemucs`. High uses Demucs 4.0.1's fine-tuned `htdemucs_ft` model;
-it is downloaded only after the user selects High for a job, which visibly
-reports that download. Outputs are Dialogue, Music, and Effects / SFX:
-Effects / SFX are best-effort residual effects after music is excluded.
+Clipper never calls Stem Studio `setup_environment`, installs dependencies, or
+downloads models. If `setup_status` is not ready, complete setup in Stem Studio
+and retry. Connector status distinguishes Not configured, Setup required,
+Ready, and a persisted Live fixture verified state. See
+[docs/INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 ### Architecture
 
@@ -255,7 +257,8 @@ PROJECT_DIR/
 │   Cartoon_Band_Performing.mp4
 ├── characters/                 # character library
 │   Buck/character.json + refs/
-├── derived/stems/              # external Stem Studio outputs (not re-imported)
+├── derived/stems/              # validated official Stem Studio MCP outputs
+├── derived/universal-clipper/  # flat Premiere-ready packages
 ├── shotlist.md                 # human-readable index
 ├── shotlist.csv                # machine-readable index
 └── .clipcataloger/             # caches + sidecars (safe to delete)

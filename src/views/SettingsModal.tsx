@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { HealthResponse } from "../lib/api";
+import {
+  HealthResponse,
+  UniversalStemConnectorStatus,
+  clearUniversalStemConnector,
+  configureUniversalStemConnector,
+  fetchUniversalStemConnectorStatus,
+} from "../lib/api";
 
 interface Props {
   current: HealthResponse;
@@ -12,6 +18,10 @@ export default function SettingsModal({ current, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stemEntry, setStemEntry] = useState("");
+  const [stemStatus, setStemStatus] =
+    useState<UniversalStemConnectorStatus | null>(null);
+  const [savingStem, setSavingStem] = useState(false);
 
   // Escape closes the modal (matches every other dialog in the app).
   useEffect(() => {
@@ -21,6 +31,20 @@ export default function SettingsModal({ current, onClose }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    let active = true;
+    fetchUniversalStemConnectorStatus()
+      .then((status) => {
+        if (!active) return;
+        setStemStatus(status);
+        setStemEntry(status.entry ?? "");
+      })
+      .catch((caught) => active && setError(String(caught)));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function save() {
     setSaving(true);
@@ -43,6 +67,50 @@ export default function SettingsModal({ current, onClose }: Props) {
       setSaving(false);
     }
   }
+
+  async function saveStemConnector() {
+    if (!stemEntry.trim()) return;
+    setSavingStem(true);
+    setError(null);
+    setNote(null);
+    try {
+      const status = await configureUniversalStemConnector(stemEntry.trim());
+      setStemStatus(status);
+      setStemEntry(status.entry ?? stemEntry.trim());
+      setNote("Stem Studio MCP path validated and saved in project-local settings.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingStem(false);
+    }
+  }
+
+  async function clearStemConnector() {
+    setSavingStem(true);
+    setError(null);
+    setNote(null);
+    try {
+      const status = await clearUniversalStemConnector();
+      setStemStatus(status);
+      setStemEntry(status.entry ?? "");
+      setNote("Project-local Stem Studio MCP path cleared.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingStem(false);
+    }
+  }
+
+  const stemStatusLabel =
+    stemStatus?.state === "live_fixture_verified"
+      ? "Live fixture verified"
+      : stemStatus?.state === "ready"
+        ? "Ready"
+        : stemStatus?.state === "setup_required"
+          ? "Setup required"
+          : stemStatus?.state === "unavailable"
+            ? "Unavailable"
+            : "Not configured";
 
   return (
     <div
@@ -148,46 +216,75 @@ export default function SettingsModal({ current, onClose }: Props) {
             </div>
           </details>
 
-          {/*
           <Field
-            label="Stem Studio installation folder"
-            hint={
-              stemStatus?.helperSetupRequired
-                ? "Installation found; local helper needs setup."
-                : current.stemStudioConfigured
-                  ? "Connected. Advanced: replace the Stem Studio folder, then restart."
-                : "Advanced: enter the Stem Studio folder. You can also start setup from Split audio stems when exporting."
-            }
+            label="Stem Studio MCP connector"
+            hint="Saved only as a canonical executable/module path in <project>/.clipcataloger/integrations.json. Clipper never forwards the parent environment or runs setup."
           >
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span
+                className={
+                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
+                  (stemStatus?.state === "live_fixture_verified" ||
+                  stemStatus?.state === "ready"
+                    ? "border-emerald-500/50 text-emerald-300"
+                    : stemStatus?.state === "setup_required"
+                      ? "border-amber-500/50 text-amber-300"
+                      : "border-ink-600 text-ink-300")
+                }
+              >
+                {stemStatusLabel}
+              </span>
+              {stemStatus?.version && (
+                <span className="font-mono text-[10px] text-ink-500">
+                  MCP {stemStatus.version}
+                </span>
+              )}
+              {stemStatus?.configuredBy && (
+                <span className="text-[10px] text-ink-600">
+                  via {stemStatus.configuredBy}
+                </span>
+              )}
+            </div>
             <input
               className="w-full rounded bg-ink-800 px-2 py-1.5 font-mono text-xs text-ink-100 outline-none ring-1 ring-ink-700 focus:ring-accent-500"
-              value={stemStudioRoot}
-              onChange={(e) => setStemStudioRoot(e.target.value)}
-              placeholder={
-                current.stemStudioConfigured
-                  ? "(connected — leave blank to keep)"
-                  : "Stem Studio folder"
-              }
+              value={stemEntry}
+              onChange={(e) => setStemEntry(e.target.value)}
+              placeholder="/Applications/Stem Studio.app/Contents/Resources/mcp/stem-studio-mcp"
             />
-            <a
-              className="block pt-1 text-[11px] text-accent-300 underline hover:text-accent-200"
-              href="https://github.com/wassermanproductions/stem-studio"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Get Stem Studio
-            </a>
-            {stemStatus?.helperSetupRequired && (
+            <div className="mt-2 flex flex-wrap gap-2">
               <button
-                className="mt-2 rounded bg-accent-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-accent-400 disabled:opacity-50"
-                onClick={finishAudioSetup}
-                disabled={finishingStemSetup}
+                type="button"
+                className="rounded bg-accent-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-accent-400 disabled:opacity-50"
+                onClick={saveStemConnector}
+                disabled={savingStem || !stemEntry.trim()}
               >
-                {finishingStemSetup ? "Finishing audio setup…" : "Finish audio setup"}
+                {savingStem ? "Checking…" : "Validate and save"}
               </button>
+              {stemStatus?.configuredBy === "settings" && (
+                <button
+                  type="button"
+                  className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 hover:bg-ink-800 disabled:opacity-50"
+                  onClick={clearStemConnector}
+                  disabled={savingStem}
+                >
+                  Clear saved path
+                </button>
+              )}
+              <a
+                className="self-center text-[11px] text-accent-300 underline hover:text-accent-200"
+                href="https://github.com/wassermanproductions/stem-studio"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Official Stem Studio
+              </a>
+            </div>
+            {stemStatus && (
+              <div className="mt-2 text-[11px] leading-5 text-ink-500">
+                {stemStatus.message}
+              </div>
             )}
           </Field>
-          */}
 
           {error && (
             <div className="rounded bg-red-950/40 px-3 py-2 text-xs text-red-200">

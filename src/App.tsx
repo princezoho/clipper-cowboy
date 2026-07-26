@@ -15,12 +15,12 @@ import LibraryView from "./views/LibraryView";
 import ImagesView from "./views/ImagesView";
 import CharactersView from "./views/CharactersView";
 import EntityCatalogView from "./views/EntityCatalogView";
+import RoundupView from "./views/RoundupView";
 import EditorOverlay from "./views/EditorOverlay";
 import SettingsModal from "./views/SettingsModal";
 import OnboardingScreen from "./views/OnboardingScreen";
 import ToastHost from "./components/ToastHost";
 import ActivityPopover from "./components/ActivityPopover";
-import StemJobsIndicator from "./components/StemJobsIndicator";
 import {
   SaveStateIndicator,
   SaveStateProvider,
@@ -28,7 +28,14 @@ import {
 } from "./lib/saveState";
 import { ToastKind, fireToast } from "./lib/toast";
 
-type Tab = "pool" | "library" | "images" | "characters" | "scenes" | "objects";
+type Tab =
+  | "pool"
+  | "library"
+  | "images"
+  | "characters"
+  | "scenes"
+  | "objects"
+  | "roundup";
 
 export default function App() {
   // ToastHost is rendered before AppInner so its mount effect (which
@@ -232,7 +239,8 @@ function AppInner() {
       t === "images" ||
       t === "characters" ||
       t === "scenes" ||
-      t === "objects"
+      t === "objects" ||
+      t === "roundup"
     ) {
       setTab(t);
     }
@@ -369,6 +377,12 @@ function AppInner() {
               <Counter n={images.length} />
             </TabButton>
             <TabButton
+              active={tab === "roundup"}
+              onClick={() => setTab("roundup")}
+            >
+              Roundup
+            </TabButton>
+            <TabButton
               active={tab === "characters"}
               onClick={() => setTab("characters")}
             >
@@ -410,10 +424,6 @@ function AppInner() {
             </>
           )}
           <SaveStateIndicator />
-          <StemJobsIndicator
-            enabled={Boolean(health?.projectDirConfigured)}
-            configured={true}
-          />
           <ActivityPopover openOnMount={openActivityOnMount} />
           <button
             className="rounded-md border border-ink-700 px-2 py-1 text-ink-300 hover:bg-ink-800"
@@ -467,6 +477,7 @@ function AppInner() {
             onChanged={reloadImages}
           />
         )}
+        {tab === "roundup" && <RoundupView />}
         {tab === "library" && (
           <LibraryView
             items={library}

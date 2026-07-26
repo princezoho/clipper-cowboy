@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { config } from "../config.js";
+import { publicError } from "../util/publicError.js";
 
 /**
  * Drafts: per-source unsaved editor state. Mid-edit work (IN/OUT + name +
@@ -104,7 +105,7 @@ router.put("/drafts/:sourceId", (req, res) => {
   try {
     writeDraftsFile(all);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "drafts:save") });
     return;
   }
   res.json(draft);
@@ -120,7 +121,7 @@ router.delete("/drafts/:sourceId", (req, res) => {
   try {
     writeDraftsFile(all);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "drafts:delete") });
     return;
   }
   res.status(204).end();

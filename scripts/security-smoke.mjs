@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -59,6 +60,32 @@ const headers = {
   "x-clipper-api-token": token,
 };
 
+/**
+ * `fetch` refuses to override Host, so drive the socket directly. That is the
+ * only way to replay what a DNS-rebound page sends: attacker hostname in Host,
+ * loopback address on the wire.
+ */
+function rawRequest(extraHeaders) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/api/health",
+        method: "GET",
+        headers: { Accept: "application/json", ...extraHeaders },
+        setHost: false,
+      },
+      (response) => {
+        response.resume();
+        response.on("end", () => resolve(response.statusCode));
+      }
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 function stop() {
   try {
     if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
@@ -116,6 +143,20 @@ try {
 
   const noToken = await fetch(`http://127.0.0.1:${port}/api/health`, { redirect: "error" });
   if (noToken.status !== 401) throw new Error("Capability token was not enforced");
+  const noTokenPackages = await fetch(
+    `http://127.0.0.1:${port}/api/universal-clipper/packages`,
+    { redirect: "error" }
+  );
+  if (noTokenPackages.status !== 401) {
+    throw new Error("Universal package APIs bypassed capability auth");
+  }
+  const traversalPackage = await fetch(
+    `http://127.0.0.1:${port}/api/universal-clipper/packages/${encodeURIComponent("../../outside")}`,
+    { headers, redirect: "error" }
+  );
+  if (traversalPackage.status !== 400 && traversalPackage.status !== 404) {
+    throw new Error("Universal package API accepted a traversal-shaped package ID");
+  }
 
   const poolResponse = await fetch(`http://127.0.0.1:${port}/api/pool`, { headers, redirect: "error" });
   const pool = await poolResponse.json();
@@ -134,7 +175,61 @@ try {
   if (firstMeta.path === secondMeta.path || !fs.existsSync(firstMeta.path) || !fs.existsSync(secondMeta.path)) {
     throw new Error("Concurrent exports did not reserve distinct output files");
   }
-  process.stdout.write("Security smoke passed: capability auth, path containment, and atomic export collisions.\n");
+  // A raw Node fs error stringifies with the absolute path it failed on, and
+  // that path names the user and their folder layout once it reaches the UI.
+  // Provoke a genuine ENOTDIR by asking for a subfolder of a regular file;
+  // this only ever touches the smoke fixture, never real project media.
+  const blockerDir = path.join(project, "images");
+  fs.mkdirSync(blockerDir, { recursive: true });
+  fs.writeFileSync(path.join(blockerDir, "blocker"), "not a directory");
+  const fsError = await fetch(`http://127.0.0.1:${port}/api/images/folders`, {
+    method: "POST", headers, redirect: "error",
+    body: JSON.stringify({ path: "blocker/child" }),
+  });
+  const fsErrorBody = await fsError.text();
+  if (fsError.status !== 500) {
+    throw new Error(`Expected a filesystem failure, got status ${fsError.status}`);
+  }
+  if (fsErrorBody.includes("/Users/") || fsErrorBody.includes(project)) {
+    throw new Error("An fs error leaked an absolute filesystem path to the client");
+  }
+  if (!fsErrorBody.includes("child")) {
+    throw new Error("Redaction stripped the actionable part of the fs error");
+  }
+
+  // DNS rebinding: a page on attacker.test whose DNS points at 127.0.0.1 is
+  // same-origin to the browser, so it sends no Origin and CORS never runs.
+  // Host is the only header it cannot control.
+  const rebound = await rawRequest({
+    Host: "attacker.test",
+    "x-clipper-api-token": token,
+  });
+  if (rebound !== 403) {
+    throw new Error(`DNS-rebound Host was accepted (status ${rebound})`);
+  }
+  const foreignOrigin = await rawRequest({
+    Host: `127.0.0.1:${port}`,
+    Origin: "http://evil.example",
+    "x-clipper-api-token": token,
+  });
+  if (foreignOrigin !== 403) {
+    throw new Error(`Cross-site Origin was accepted (status ${foreignOrigin})`);
+  }
+  // The guard must not cost us the supported local callers: direct loopback,
+  // the `localhost` name used by the Vite proxy's changeOrigin rewrite, and
+  // that proxy's forwarded browser Origin.
+  for (const [label, extra] of [
+    ["loopback IP", { Host: `127.0.0.1:${port}` }],
+    ["localhost name", { Host: `localhost:${port}` }],
+    ["vite dev proxy", { Host: `localhost:${port}`, Origin: "http://localhost:5173" }],
+  ]) {
+    const status = await rawRequest({ ...extra, "x-clipper-api-token": token });
+    if (status !== 200) {
+      throw new Error(`Host guard broke a supported local client (${label}: ${status})`);
+    }
+  }
+
+  process.stdout.write("Security smoke passed: capability auth, package/path containment, atomic export collisions, redacted filesystem errors, and DNS-rebinding/Origin rejection.\n");
 } finally {
   stop();
   fs.rmSync(temp, { recursive: true, force: true });

@@ -11,8 +11,10 @@ import { scheduleShotlistRebuild } from "../util/shotlist.js";
 import { smartCut } from "../smartcut.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { appendActivity } from "../util/activity.js";
+import { appendRoundupEvent } from "../util/roundup.js";
 import { pathToId } from "../util/id.js";
-import { stemJobManager } from "../stems/manager.js";
+import { moveFileNoReplace } from "../util/nonLossyMove.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 const LIBRARY_ID_RE = /^[a-f0-9]{16}$/;
@@ -289,6 +291,13 @@ router.post("/library/:id/reexport", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  if (parsed.data.stems) {
+    res.status(410).json({
+      error:
+        "Clip-level automatic stems were retired. Re-export first, then use Universal Clipper with the official Stem Studio MCP.",
+    });
+    return;
+  }
   const source = pickSourcePath(meta);
   const clipPath = safeExistingFile(config.clipsDir, meta.path);
   if (!clipPath) {
@@ -347,33 +356,14 @@ router.post("/library/:id/reexport", async (req, res) => {
       name: updated.name,
       durationSec: updated.duration,
     });
-    let stemJob;
-    if (parsed.data.stems) {
-      try {
-        stemJob = stemJobManager.enqueue({
-          clipId: req.params.id,
-          clipName: updated.name,
-          clipPath,
-          quality: parsed.data.stems.quality,
-        });
-      } catch {
-        // The re-export is already valid. A queue failure must not undo it.
-        appendActivity("stems_failed", {
-          clipId: req.params.id,
-          clipName: updated.name,
-          quality: parsed.data.stems.quality,
-          error: "background stem queue could not start",
-        });
-      }
-    }
-    res.json({ ...updated, ...(stemJob ? { stemJob } : {}) });
+    res.json(updated);
   } catch (err) {
     try {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     } catch {
       // ignore
     }
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "library:reexport") });
   }
 });
 
@@ -436,7 +426,7 @@ router.get("/library/:id/thumb", async (req, res) => {
       const t = Math.max(0.05, Math.min(dur / 2, 30));
       await extractFrameJpeg(file, t, cachePath, 360);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: publicError(err, "library:thumb") });
       return;
     }
   }
@@ -616,9 +606,15 @@ router.post("/library/:id/restore", (req, res) => {
     return;
   }
   try {
-    fs.renameSync(candidate, targetPath);
+    moveFileNoReplace(candidate, targetPath);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    const code = (err as NodeJS.ErrnoException).code;
+    res.status(code === "EEXIST" ? 409 : 500).json({
+      error:
+        code === "EEXIST"
+          ? "restore destination appeared during the operation; nothing was overwritten"
+          : publicError(err, "library:restore"),
+    });
     return;
   }
   // Best-effort: ensure the sidecar exists with the meta we already have.
@@ -629,6 +625,17 @@ router.post("/library/:id/restore", (req, res) => {
   }
   scheduleShotlistRebuild();
   appendActivity("clip_restored", { id: req.params.id, name: meta.name });
+  appendRoundupEvent({
+    kind: "clip_restore",
+    entityType: "library",
+    oldPath: candidate,
+    newPath: targetPath,
+    oldName: path.basename(candidate),
+    newName: path.basename(targetPath),
+    oldId: req.params.id,
+    newId: req.params.id,
+    triggeredBy: "restore",
+  });
   res.json({ ok: true, path: targetPath });
 });
 
@@ -692,7 +699,7 @@ router.post("/library/repair-missing", async (_req, res) => {
       } catch {
         // ignore
       }
-      errors.push({ id: meta.id, error: String(err) });
+      errors.push({ id: meta.id, error: publicError(err, "library:repair") });
     }
   }
   if (repaired > 0) scheduleShotlistRebuild();
@@ -773,6 +780,15 @@ router.post("/library/orphans/trash", (req, res) => {
     }
     try {
       fs.renameSync(p, dest);
+      appendRoundupEvent({
+        kind: "orphan_trash",
+        entityType: "library",
+        oldPath: p,
+        newPath: dest,
+        oldName: path.basename(p),
+        newName: path.basename(dest),
+        triggeredBy: "orphan_trash",
+      });
       trashed += 1;
     } catch {
       // skip on failure
@@ -846,13 +862,23 @@ router.post("/library/:id/rename", (req, res) => {
     res.status(409).json({ error: "destination already exists" });
     return;
   }
-  try {
-    fs.renameSync(oldPath, newAbs);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
+  const newId = pathToId(newAbs);
+  if (newId !== oldId && fs.existsSync(metaPath(newId))) {
+    res.status(409).json({ error: "destination metadata already exists" });
     return;
   }
-  const newId = pathToId(newAbs);
+  try {
+    moveFileNoReplace(oldPath, newAbs);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    res.status(code === "EEXIST" ? 409 : 500).json({
+      error:
+        code === "EEXIST"
+          ? "destination appeared during the rename; nothing was overwritten"
+          : publicError(err, "library:rename"),
+    });
+    return;
+  }
   const oldName = meta.name;
   const newName = parsed.data.name;
   const updated: LibraryMeta = {
@@ -872,7 +898,9 @@ router.post("/library/:id/rename", (req, res) => {
     // ignore
   }
   try {
-    fs.writeFileSync(metaPath(newId), JSON.stringify(updated, null, 2));
+    fs.writeFileSync(metaPath(newId), JSON.stringify(updated, null, 2), {
+      flag: newId === oldId ? "w" : "wx",
+    });
     if (newId !== oldId) {
       try {
         fs.unlinkSync(oldMp);
@@ -881,11 +909,33 @@ router.post("/library/:id/rename", (req, res) => {
       }
     }
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    let rollbackError: unknown;
+    try {
+      moveFileNoReplace(newAbs, oldPath);
+    } catch (rollback) {
+      rollbackError = rollback;
+    }
+    const detail = publicError(err, "library:rename-metadata");
+    res.status(500).json({
+      error: rollbackError
+        ? `metadata update failed and media rollback needs attention: ${detail}; ${publicError(rollbackError, "library:rename-rollback")}`
+        : `metadata update failed; media rename was rolled back: ${detail}`,
+    });
     return;
   }
   scheduleShotlistRebuild();
   appendActivity("clip_renamed", { oldId, newId, oldName, newName });
+  appendRoundupEvent({
+    kind: "library_rename",
+    entityType: "library",
+    oldPath,
+    newPath: newAbs,
+    oldName,
+    newName,
+    oldId,
+    newId,
+    triggeredBy: "user",
+  });
   res.json({ ok: true, item: buildLibraryItem(updated) });
 });
 
@@ -942,7 +992,7 @@ router.post("/library/send-to-premiere", (req, res) => {
       res.status(500).json({
         error: "Adobe Premiere Pro doesn't appear to be installed",
         code: "premiere-missing",
-        details: String(err),
+        details: publicError(err, "library:send-to-premiere"),
       });
     }
   });
@@ -952,7 +1002,9 @@ router.post("/library/send-to-premiere", (req, res) => {
       res.status(500).json({
         error: "Adobe Premiere Pro doesn't appear to be installed",
         code: "premiere-missing",
-        details: stderr.trim() || `open exited ${code}`,
+        details: stderr.trim()
+          ? publicError(stderr.trim(), "library:send-to-premiere")
+          : `open exited ${code}`,
       });
       return;
     }

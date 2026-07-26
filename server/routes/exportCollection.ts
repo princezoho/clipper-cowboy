@@ -6,6 +6,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { listCharacters } from "../util/characters.js";
 import { appendActivity } from "../util/activity.js";
+import { publicError } from "../util/publicError.js";
 
 /*
  * "Export collection" — the user filters the Library down (search + characters
@@ -276,7 +277,7 @@ router.post("/export-collection", async (req, res) => {
     } catch {
       // ignore
     }
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "export-collection:place") });
     return;
   }
 
@@ -285,9 +286,11 @@ router.post("/export-collection", async (req, res) => {
     try {
       zipPath = await zipFolder(folder);
     } catch (err) {
-      res
-        .status(500)
-        .json({ error: String(err), folder, fileCount: matched.length });
+      res.status(500).json({
+        error: publicError(err, "export-collection:zip"),
+        folder,
+        fileCount: matched.length,
+      });
       return;
     }
   }

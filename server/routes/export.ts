@@ -12,7 +12,7 @@ import { getDuration } from "../ffmpeg.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { scheduleShotlistRebuild } from "../util/shotlist.js";
 import { appendActivity } from "../util/activity.js";
-import { stemJobManager } from "../stems/manager.js";
+import { publicError } from "../util/publicError.js";
 
 const router = Router();
 
@@ -69,6 +69,13 @@ router.post("/export", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  if (parsed.data.stems) {
+    res.status(410).json({
+      error:
+        "Clip-level automatic stems were retired. Export the clip, then use Universal Clipper with the official Stem Studio MCP.",
+    });
+    return;
+  }
   const {
     sourceId,
     in: inT,
@@ -80,7 +87,6 @@ router.post("/export", async (req, res) => {
     scenes,
     objects,
     mode,
-    stems,
   } = parsed.data;
   const source = resolvePoolId(sourceId);
   if (!source) {
@@ -175,28 +181,7 @@ router.post("/export", async (req, res) => {
       mode: cutMode,
       durationSec: meta.duration,
     });
-    let stemJob;
-    if (stems && clipPath) {
-      try {
-        stemJob = stemJobManager.enqueue({
-          clipId: id,
-          clipName: name,
-          clipPath,
-          quality: stems.quality,
-        });
-      } catch (error) {
-        // The foreground export is already valid. An unexpected queue bug must
-        // never roll it back or remove the user's new clip.
-        appendActivity("stems_failed", {
-          clipId: id,
-          clipName: name,
-          quality: stems.quality,
-          error: "background stem queue could not start",
-        });
-      }
-    }
-    const response = { ...meta, ...(stemJob ? { stemJob } : {}) };
-    res.json(response);
+    res.json(meta);
   } catch (err) {
     for (const f of cleanupOnFail) {
       try {
@@ -205,7 +190,7 @@ router.post("/export", async (req, res) => {
         // ignore
       }
     }
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: publicError(err, "export") });
   }
 });
 
