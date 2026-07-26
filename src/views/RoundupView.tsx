@@ -53,12 +53,12 @@ function formatExact(ts: number): string {
 type ApprovedRootReason =
   | "seedance"
   | "droplet"
-  | "gunslinger_dropbox"
-  | "gunslinger_seedance";
+  | "generator_cloud"
+  | "generator_local";
 
 function rootReasonLabel(reason: RoundupWatcherStatus["roots"][number]["reason"]): string {
-  if (reason === "gunslinger_dropbox") return "Gunslinger Dropbox";
-  if (reason === "gunslinger_seedance") return "Gunslinger Seedance";
+  if (reason === "generator_cloud") return "Generator (cloud synced)";
+  if (reason === "generator_local") return "Generator (local)";
   return reason;
 }
 
@@ -416,9 +416,9 @@ export default function RoundupView() {
   const [savingWatcher, setSavingWatcher] = useState(false);
   const [inventory, setInventory] = useState<RoundupInventoryJob | null>(null);
   const [approvedPath, setApprovedPath] = useState("");
-  const [approvedLabel, setApprovedLabel] = useState("Seedance / Gunslinger");
+  const [approvedLabel, setApprovedLabel] = useState("Generator output");
   const [approvedReason, setApprovedReason] =
-    useState<ApprovedRootReason>("gunslinger_seedance");
+    useState<ApprovedRootReason>("generator_local");
   const [approvalChecked, setApprovalChecked] = useState(false);
 
   const reloadHistory = useCallback(async () => {
@@ -583,7 +583,7 @@ export default function RoundupView() {
       );
       fireToast({
         kind: "success",
-        title: trackable ? "Lassoed — tracking on" : "Untagged — tracking off",
+        title: trackable ? "Lassoed, tracking on" : "Untagged, tracking off",
       });
     } catch (err) {
       fireToast({
@@ -685,7 +685,7 @@ export default function RoundupView() {
           </h1>
           <p className="mt-1 max-w-xl text-sm text-ink-400">
             AirTag for your footage. Media stays trackable across renames and
-            moves through approved roots — paste an old path or filename, copy
+            moves through approved roots. Paste an old path or filename, copy
             the current one, or Reveal in Finder.
           </p>
         </div>
@@ -795,7 +795,7 @@ export default function RoundupView() {
             <div className="sm:col-span-2">
               <p className="text-xs font-medium text-ink-300">Approve another media root</p>
               <p className="text-[10px] text-ink-600">
-                Use this when Seedance/Gunslinger or a droplet destination was not found in the project. Existing folders only; the server applies the same safe-root and canonical-path checks.
+                Use this when a generator output folder (Seedance or similar) or a droplet destination was not found in the project. Existing folders only; the server applies the same safe-root and canonical-path checks.
               </p>
             </div>
             <input
@@ -815,9 +815,9 @@ export default function RoundupView() {
               onChange={(e) => setApprovedReason(e.target.value as ApprovedRootReason)}
               className="rounded border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-ink-200"
             >
-              <option value="seedance">Seedance / Gunslinger</option>
-              <option value="gunslinger_seedance">Gunslinger Seedance</option>
-              <option value="gunslinger_dropbox">Gunslinger Dropbox</option>
+              <option value="seedance">Generator output (Seedance)</option>
+              <option value="generator_local">Generator output (local folder)</option>
+              <option value="generator_cloud">Generator output (cloud synced folder)</option>
               <option value="droplet">Droplet destination</option>
             </select>
             <label className="flex items-center gap-2 text-[11px] text-ink-400">
@@ -1012,7 +1012,7 @@ export default function RoundupView() {
               height={80}
             />
             <p className="max-w-sm text-sm text-ink-500">
-              No matches yet. Keep watching on — when Seedance or a renamer
+              No matches yet. Keep watching on, and when Seedance or a renamer
               moves footage, Roundup keeps the AirTag trail.
             </p>
           </div>
@@ -1081,7 +1081,7 @@ export default function RoundupView() {
                             >
                               {c.tag.trackable
                                 ? "Stop tracking (untag)"
-                                : "Lasso again — resume tracking"}
+                                : "Lasso again to resume tracking"}
                             </button>
                           ) : (
                             <button
@@ -1089,7 +1089,7 @@ export default function RoundupView() {
                               className="text-[11px] text-amber-400/90 underline-offset-2 hover:underline"
                               onClick={() => toggleTrackable(c, true)}
                             >
-                              Lasso — start tracking
+                              Lasso to start tracking
                             </button>
                           )}
                         </div>

@@ -1,3 +1,27 @@
+/* Brand typefaces, self-hosted and licensed for this project.
+ * woff2 first (roughly a third the size), original .otf as fallback.
+ * Neither face is subsetted: the full glyph set ships so accented and
+ * punctuation characters survive. */
+@font-face {
+  font-family: "Wantedo";
+  src: url("./media/fonts/Wantedo.woff2") format("woff2"),
+       url("./media/fonts/Wantedo.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Adobe Garamond Pro Bold is the only weight in the family, so it is declared
+ * across 400-700 to stop the browser synthesising a second, heavier bold. */
+@font-face {
+  font-family: "Garamond Brand";
+  src: url("./media/fonts/Garamond.woff2") format("woff2"),
+       url("./media/fonts/Garamond.otf") format("opentype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --paper: #e9d7a8;
   --paper-light: #f4e8cc;
@@ -8,8 +32,10 @@
   --cream: #fff5df;
   --muted: #bca879;
   --line: rgba(23, 18, 14, .24);
-  --display: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-  --serif: Garamond, "Times New Roman", Georgia, serif;
+  /* Fallbacks lean slab/serif rather than Impact so a failed font load still
+   * reads as a wanted poster instead of a sports flyer. */
+  --display: "Wantedo", Rockwell, "Bookman Old Style", Georgia, serif;
+  --serif: "Garamond Brand", "Adobe Garamond Pro", "EB Garamond", Garamond, Georgia, serif;
   --sans: Arial, Helvetica, sans-serif;
   --content: min(1200px, calc(100vw - 56px));
 }
@@ -17,7 +43,13 @@
 * { box-sizing: border-box; }
 html { background: var(--paper); scroll-behavior: smooth; scroll-padding-top: 6rem; }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); }
-img { display: block; max-width: 100%; }
+/* Every img carries width and height attributes so the browser reserves the
+ * right box before bytes arrive. `height: auto` is what stops those attributes
+ * being taken literally once CSS resizes the image. */
+img { display: block; max-width: 100%; height: auto; }
+/* Screenshots are wrapped in <picture> for the WebP/PNG choice. Blocking the
+ * wrapper keeps it from adding an inline baseline gap under each frame. */
+picture { display: block; }
 a { color: inherit; }
 .content-width { width: var(--content); margin-inline: auto; }
 .skip-link { position: fixed; z-index: 99; top: -5rem; left: 1rem; padding: .75rem 1rem; background: var(--cream); font-family: var(--sans); }
@@ -49,12 +81,15 @@ a { color: inherit; }
 
 .hero { position: relative; min-height: 100svh; overflow: hidden; color: var(--cream); background: var(--ink); isolation: isolate; }
 .hero::before { position: absolute; z-index: -1; inset: 0; content: ""; opacity: .7; background: radial-gradient(circle at 76% 47%, rgba(145, 46, 28, .22), transparent 33%), linear-gradient(115deg, #120d0a 11%, #25170f 100%); }
-.hero-layout { display: grid; grid-template-columns: minmax(0, .94fr) minmax(420px, 1.06fr); align-items: center; gap: clamp(2rem, 6vw, 6rem); min-height: 100svh; padding: 7rem 0 4rem; }
+.hero-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr); align-items: center; gap: clamp(2rem, 4vw, 4.5rem); min-height: 100svh; padding: 7rem 0 4rem; }
 .hero-content { position: relative; z-index: 2; }
 .eyebrow { margin: 0 0 1.35rem; color: var(--amber); font: 700 .65rem/1.25 var(--sans); letter-spacing: .17em; text-transform: uppercase; }
 .hero-kicker span { padding-inline: .4rem; color: var(--cream); }
 h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: normal; letter-spacing: .01em; text-transform: uppercase; }
-h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .77; text-wrap: balance; }
+/* Wantedo is a wide face: its longest word here, GENERATIONS, measures 7.23x
+ * the font size. The ceiling keeps that word inside the hero text column so it
+ * cannot spill across the product screenshot beside it. */
+h1 { max-width: 760px; font-size: clamp(2.9rem, 5vw, 4.9rem); line-height: .84; text-wrap: balance; }
 .hero-deck { max-width: 520px; margin: 2rem 0 0; font-size: clamp(1.16rem, 1.6vw, 1.45rem); line-height: 1.27; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; }
 .button { display: inline-flex; align-items: center; gap: 1.15rem; padding: .95rem 1.1rem; border: 1px solid currentColor; font: 700 .65rem/1 var(--sans); letter-spacing: .13em; text-decoration: none; text-transform: uppercase; transition: transform .2s ease, color .2s ease, background .2s ease; }
@@ -89,9 +124,15 @@ h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .7
 .chapter-heading h3 { grid-column: 2; max-width: 760px; font-size: clamp(2.9rem, 5.5vw, 6.1rem); line-height: .8; text-wrap: balance; }
 .chapter-heading > p:last-child { grid-column: 2; max-width: 590px; margin: 0; color: #c8b27e; font-size: 1.2rem; line-height: 1.35; }
 .screenshot-frame { position: relative; width: min(1330px, calc(100vw - 28px)); margin: 0 auto; overflow: hidden; border: 1px solid rgba(255,245,223,.28); background: #0b0a09; box-shadow: 0 28px 80px rgba(0,0,0,.48); }
-.screenshot-frame > img { width: 100%; transform: translateY(var(--media-parallax, 0px)) scale(1.035); transition: transform .1s linear; }
+/* The media box excludes the caption, so overlay insets below are percentages
+ * of the screenshot itself and hold their alignment at every width. */
+.frame-media { position: relative; overflow: hidden; }
+.screenshot-frame img { width: 100%; transform: translateY(var(--media-parallax, 0px)) scale(1.035); transition: transform .1s linear; }
 .pool-frame::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, rgba(229,163,38,.15), transparent 26%, transparent 74%, rgba(141,47,32,.13)); pointer-events: none; }
-.pool-focus { position: absolute; top: 16%; right: 5%; bottom: 23%; left: 6%; border: 1px solid rgba(229,163,38,.55); opacity: .6; pointer-events: none; }
+/* Insets land in the gutters of the Pool grid in hero-pool: just inside the
+ * folder sidebar, above the first row of clips, and below the third. The 1.035
+ * scale on the image is already accounted for. */
+.pool-focus { position: absolute; top: 19.6%; right: 16.5%; bottom: 5.8%; left: 13%; border: 1px solid rgba(229,163,38,.55); opacity: .6; pointer-events: none; }
 .pool-focus::before { position: absolute; top: -1px; bottom: -1px; left: 0; width: 28%; content: ""; border-right: 1px solid var(--amber); background: rgba(229,163,38,.07); animation: coverage-scan 9s ease-in-out infinite alternate; }
 .screenshot-frame figcaption { position: relative; z-index: 2; background: #0b0a09; }
 .chapter-editor { padding-top: clamp(5rem, 11vw, 10rem); background: var(--brown); }
@@ -99,9 +140,10 @@ h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .7
 .chapter-editor .chapter-number { color: var(--paper); }
 .chapter-editor .chapter-heading > p:last-child { margin-left: auto; color: #efd5a5; }
 .editor-frame { border-color: rgba(255,245,223,.4); }
-.range-emphasis { position: absolute; top: 37%; right: 6%; left: 2%; display: flex; align-items: center; justify-content: space-between; color: var(--ink); font: 700 .5rem/1 var(--sans); letter-spacing: .1em; }
-.range-emphasis i { flex: 1; height: 4px; margin: 0 .55rem; background: var(--amber); box-shadow: 0 0 0 2px rgba(255,245,223,.65), 0 0 14px rgba(229,163,38,.45); animation: range-breathe 2.7s ease-in-out infinite; }
 .chapter-library { padding-top: clamp(6rem, 11vw, 10rem); background: var(--paper); color: var(--ink); }
+/* Same frame as the other two chapters, with the hairline flipped to ink so it
+ * reads against the paper background instead of vanishing into it. */
+.library-frame { border-color: rgba(23,18,14,.32); }
 .library-copy { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(0, 2.3fr); gap: 2.5rem; padding-bottom: clamp(1rem, 4vw, 3rem); }
 .library-copy .chapter-number { color: var(--red); }
 .library-copy .chapter-number span { color: var(--brown); }
@@ -131,15 +173,14 @@ h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .7
 .footer p { margin: 0; }
 .footer a { color: var(--cream); text-decoration: none; }
 
-[data-stage-target] { opacity: 0; transform: translateY(26px); transition: opacity .75s ease, transform .75s cubic-bezier(.2,.72,.2,1); }
+.js [data-stage-target] { opacity: 0; transform: translateY(26px); transition: opacity .75s ease, transform .75s cubic-bezier(.2,.72,.2,1); }
 [data-stage-target].stage-1 { opacity: 1; transform: translateY(0); }
-.hero-content > * { opacity: 0; transform: translateY(22px); transition: opacity .68s ease, transform .68s cubic-bezier(.2,.72,.2,1); }
+.js .hero-content > * { opacity: 0; transform: translateY(22px); transition: opacity .68s ease, transform .68s cubic-bezier(.2,.72,.2,1); }
 .hero-content.stage-1 .hero-kicker, .hero-content.stage-1 h1 { opacity: 1; transform: translateY(0); }
 .hero-content.stage-2 .hero-deck { opacity: 1; transform: translateY(0); }
 .hero-content.stage-3 .hero-actions { opacity: 1; transform: translateY(0); }
 
 @keyframes coverage-scan { to { transform: translateX(255%); } }
-@keyframes range-breathe { 50% { opacity: .55; transform: scaleX(.95); } }
 @keyframes gate-weave { 50% { transform: translate(.5px, -.5px); opacity: .75; } }
 
 @media (max-width: 820px) {
@@ -152,6 +193,8 @@ h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .7
   .header-actions { margin-left: auto; }
   .header-repo, .header-start { display: none; }
   .menu-toggle { display: inline-flex; }
+  /* Single column, so the headline gets the full content width back. */
+  h1 { max-width: none; font-size: clamp(3rem, 9vw, 5.6rem); }
   .hero-layout { grid-template-columns: 1fr; align-content: center; gap: 2.5rem; padding-top: 7rem; }
   .hero-product { max-width: 670px; margin: 0 auto; }
   .hero-product img { width: 100%; transform: none; }
@@ -172,7 +215,13 @@ h1 { max-width: 670px; font-size: clamp(4.25rem, 8.4vw, 9.4rem); line-height: .7
   .header-actions { gap: 0; }
   .menu-toggle-label { display: none; }
   .menu-toggle { min-width: 44px; justify-content: center; }
-  h1 { font-size: clamp(3.85rem, 18vw, 6.4rem); }
+  /* Display sizes are capped by the longest unbreakable word at each step so no
+   * heading overflows the narrow column. Verified down to 320px. */
+  h1 { font-size: clamp(2.35rem, 11.8vw, 4rem); }
+  .problem h2, .workflow-intro h2 { font-size: clamp(2.6rem, 11vw, 3.6rem); }
+  .close h2 { font-size: clamp(2.5rem, 10.5vw, 3.5rem); }
+  .library-copy h3 { font-size: clamp(2.4rem, 10vw, 3.2rem); }
+  .chapter-heading h3 { font-size: clamp(2.2rem, 9.5vw, 3rem); }
   .hero-product figcaption span:nth-child(2), .screenshot-frame figcaption span:nth-child(2) { display: none; }
   .scroll-cue { display: none; }
   .proof-strip { justify-content: flex-start; }

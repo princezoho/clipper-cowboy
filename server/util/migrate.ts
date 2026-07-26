@@ -3,7 +3,12 @@ import path from "node:path";
 import os from "node:os";
 import { config, SUPPRESSED_TAGS } from "../config.js";
 import { scheduleShotlistRebuild } from "./shotlist.js";
-import { appendRoundupEvent } from "./roundup.js";
+import {
+  appendRoundupEvent,
+  readRoundupSettings,
+  writeRoundupSettings,
+  ROUNDUP_SETTINGS_PATH,
+} from "./roundup.js";
 import { moveFileNoReplace } from "./nonLossyMove.js";
 
 interface LegacyMeta {
@@ -181,4 +186,38 @@ export function cleanSuppressedTagsInSidecars(): { cleaned: number } {
     scheduleShotlistRebuild(0);
   }
   return { cleaned };
+}
+
+const LEGACY_ROUNDUP_ROOT_REASONS = ["gunslinger_dropbox", "gunslinger_seedance"];
+
+/**
+ * Rewrite Roundup approved-root `reason` values that earlier builds named after
+ * a specific project. readRoundupSettings() already maps them forward, so this
+ * only tidies the file on disk; approval ids are preserved because
+ * `watchedRootIds` references them verbatim. Idempotent, and a no-op when the
+ * project has no settings file yet.
+ */
+export function migrateRoundupRootReasons(): { rewritten: number } {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(ROUNDUP_SETTINGS_PATH, "utf8");
+  } catch {
+    return { rewritten: 0 };
+  }
+  let parsed: { approvedRoots?: { reason?: unknown }[] };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { rewritten: 0 };
+  }
+  const stale = (parsed.approvedRoots ?? []).filter(
+    (root) =>
+      typeof root?.reason === "string" &&
+      LEGACY_ROUNDUP_ROOT_REASONS.includes(root.reason)
+  ).length;
+  if (stale === 0) return { rewritten: 0 };
+
+  writeRoundupSettings(readRoundupSettings());
+  console.log(`[migrate] renamed ${stale} legacy Roundup root reason(s)`);
+  return { rewritten: stale };
 }

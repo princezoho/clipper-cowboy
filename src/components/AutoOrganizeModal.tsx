@@ -174,7 +174,7 @@ export default function AutoOrganizeModal({
         title: `Auto-organized ${totalMoved} video${totalMoved === 1 ? "" : "s"} into ${byFolder.size} folder${byFolder.size === 1 ? "" : "s"}`,
         body:
           totalErrors > 0
-            ? `${totalErrors} skipped — see details in the review table`
+            ? `${totalErrors} skipped. See details in the review table`
             : undefined,
       });
       onComplete();
@@ -238,12 +238,12 @@ export default function AutoOrganizeModal({
         {stage === "pre" && (
           <div className="flex flex-col gap-4 overflow-y-auto p-6 text-sm text-ink-200">
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100">
-              <div className="font-semibold">Heads up — this calls OpenAI.</div>
+              <div className="font-semibold">Heads up, this calls OpenAI.</div>
               <div className="mt-1 text-xs">
                 We'll extract 3 frames from each of {analyzableItems.length} video
                 {analyzableItems.length === 1 ? "" : "s"} and ask GPT-4o for a folder
                 suggestion. Estimated total cost: <strong>~$0.15-0.30</strong> at
-                current vision pricing. Nothing moves on disk yet — you'll review
+                current vision pricing. Nothing moves on disk yet. You'll review
                 every suggestion first.
               </div>
             </div>
@@ -253,13 +253,13 @@ export default function AutoOrganizeModal({
                 title="GPT-4o batches are capped at 100 to keep costs predictable."
               >
                 Pool has {items.length} sources. Only the first {HARD_CAP} will be
-                analyzed in this pass — re-run after applying to handle the rest.
+                analyzed in this pass. Re-run after applying to handle the rest.
               </div>
             )}
             <ul className="space-y-1.5 text-xs text-ink-400">
               <li>• Frame extraction runs locally with ffmpeg.</li>
               <li>• Frames are sent to OpenAI as low-detail base64.</li>
-              <li>• Suggestions land in a review table — you can edit, skip, or apply.</li>
+              <li>• Suggestions land in a review table. You can edit, skip, or apply.</li>
             </ul>
             <div className="mt-2 flex justify-end gap-2">
               <button
@@ -438,7 +438,7 @@ function ReviewTable({
                       )}
                     </span>
                   ) : (
-                    "—"
+                    "-"
                   )}
                 </td>
                 <td className="px-2 py-1.5 text-[10px] uppercase">
@@ -456,7 +456,7 @@ function ReviewTable({
                       {r.suggested.confidence}
                     </span>
                   ) : (
-                    "—"
+                    "-"
                   )}
                 </td>
                 <td className="px-2 py-1.5 text-center">
@@ -484,7 +484,7 @@ function ReviewTable({
                       disabled={applying}
                     />
                   ) : (
-                    <span className="text-ink-600">—</span>
+                    <span className="text-ink-600">-</span>
                   )}
                 </td>
               </tr>

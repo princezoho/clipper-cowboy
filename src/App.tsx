@@ -307,6 +307,18 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The starter project writes sources, clips, characters, entities, and an
+  // image in one go, so every tab needs to re-read rather than just the one
+  // the button was clicked from.
+  function reloadEverything() {
+    reloadPool();
+    reloadLibrary();
+    reloadImages();
+    reloadCharacters();
+    reloadScenes();
+    reloadObjects();
+  }
+
   function handleExportComplete() {
     reloadLibrary();
     reloadPool();
@@ -473,6 +485,7 @@ function AppInner() {
             onPick={(item) => setEditing(item)}
             onChanged={reloadPool}
             poolDir={health?.projectDir}
+            onSampleLoaded={reloadEverything}
           />
         )}
         {tab === "images" && (
@@ -503,6 +516,7 @@ function AppInner() {
             onSearchChange={setSearchText}
             onClearFilters={clearAllFilters}
             onPreviewInEditor={handlePreviewInEditor}
+            onSampleLoaded={reloadEverything}
           />
         )}
         {tab === "characters" && (
@@ -520,7 +534,7 @@ function AppInner() {
             kind="scenes"
             label="Scenes"
             singular="scene"
-            hint="Use scenes for recurring locations or moments — e.g. Saloon Brawl, Desert Showdown. Tag clips from the Editor."
+            hint="Use scenes for recurring locations or moments, e.g. Saloon Brawl, Desert Showdown. Tag clips from the Editor."
             reloadKey={sceneReloadKey}
             onChanged={reloadScenes}
             selectedIds={selectedSceneIds}
@@ -533,7 +547,7 @@ function AppInner() {
             kind="objects"
             label="Objects"
             singular="object"
-            hint="Use objects for physical things that recur across clips — e.g. Rose, Apple, Wagon. Tag clips from the Editor."
+            hint="Use objects for physical things that recur across clips, e.g. Rose, Apple, Wagon. Tag clips from the Editor."
             reloadKey={objectReloadKey}
             onChanged={reloadObjects}
             selectedIds={selectedObjectIds}

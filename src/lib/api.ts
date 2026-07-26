@@ -271,6 +271,31 @@ export async function fetchPool(): Promise<{ items: PoolItem[]; poolDir: string 
   return jsonOrThrow(await fetch("/api/pool"));
 }
 
+export interface StarterProjectStatus {
+  available: boolean;
+  loaded: boolean;
+  title?: string;
+  description?: string;
+  sourceCount?: number;
+  clipCount?: number;
+}
+
+export async function fetchStarterProject(): Promise<StarterProjectStatus> {
+  return jsonOrThrow(await fetch("/api/samples/starter"));
+}
+
+export async function loadStarterProject(): Promise<{
+  ok: boolean;
+  sources: number;
+  clips: number;
+  images: number;
+  characters: number;
+}> {
+  return jsonOrThrow(
+    await fetch("/api/samples/starter/load", { method: "POST" })
+  );
+}
+
 export async function fetchLibrary(): Promise<{
   items: LibraryItem[];
   libraryDir: string;
@@ -1303,7 +1328,8 @@ export type ActivityKind =
   | "source_batch_started"
   | "pool_source_moved"
   | "pool_organize_analyzed"
-  | "universal_package_created";
+  | "universal_package_created"
+  | "sample_project_loaded";
 
 export interface ActivityEvent {
   ts: number;
@@ -1399,8 +1425,8 @@ export type RoundupWatchRootId = string;
 export type RoundupRootReason =
   | "project"
   | "seedance"
-  | "gunslinger_dropbox"
-  | "gunslinger_seedance"
+  | "generator_cloud"
+  | "generator_local"
   | "downloads"
   | "desktop"
   | "documents"
@@ -1476,7 +1502,7 @@ export async function updateRoundupWatcher(input: {
 export async function approveRoundupRoot(input: {
   path: string;
   label: string;
-  reason: "seedance" | "droplet" | "gunslinger_dropbox" | "gunslinger_seedance";
+  reason: "seedance" | "droplet" | "generator_cloud" | "generator_local";
   approved: true;
 }): Promise<RoundupWatcherStatus> {
   return jsonOrThrow(

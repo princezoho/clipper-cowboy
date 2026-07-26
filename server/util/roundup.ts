@@ -151,8 +151,8 @@ export type RoundupWatchRootId =
 export type RoundupRootReason =
   | "project"
   | "seedance"
-  | "gunslinger_dropbox"
-  | "gunslinger_seedance"
+  | "generator_cloud"
+  | "generator_local"
   | "downloads"
   | "desktop"
   | "documents"
@@ -273,19 +273,16 @@ export function listAllowlistedWatchRoots(
     }))
   );
 
-  // Known project-local locations may be discovered without guessing anywhere
-  // else on the machine. Duplicate/canonical paths are collapsed below.
-  const knownSeedance = [
-    path.join(config.projectDir, "Seedance"),
-    path.join(config.projectDir, "Gunslinger"),
-    path.join(config.projectDir, "Gunslinger", "Seedance"),
-  ];
-  for (const candidate of knownSeedance) {
+  // Conventional generator-output folder names directly inside PROJECT_DIR may be
+  // discovered without guessing anywhere else on the machine. Anything else needs
+  // an explicit approval. Duplicate/canonical paths are collapsed below.
+  const knownGeneratorDirs = [path.join(config.projectDir, "Seedance")];
+  for (const candidate of knownGeneratorDirs) {
     try {
       if (!fs.statSync(candidate).isDirectory()) continue;
       defs.push({
         id: `seedance:${cryptoSafeRootId(candidate)}`,
-        label: path.basename(candidate) === "Gunslinger" ? "Gunslinger" : "Seedance",
+        label: path.basename(candidate),
         path: candidate,
         reason: "seedance",
       });
@@ -369,7 +366,7 @@ export interface RoundupSettings {
    * every allowed/existing root remains eligible for explicit read-only scans.
    */
   watchedRootIds: RoundupWatchRootId[];
-  /** Explicit user-approved Seedance/Gunslinger or droplet destinations. */
+  /** Explicit user-approved generator-output or droplet destinations. */
   approvedRoots: RoundupApprovedRoot[];
 }
 
@@ -377,19 +374,36 @@ export interface RoundupApprovedRoot {
   id: string;
   label: string;
   path: string;
-  reason: "seedance" | "droplet" | "gunslinger_dropbox" | "gunslinger_seedance";
+  reason: "seedance" | "droplet" | "generator_cloud" | "generator_local";
 }
 
 const APPROVED_ROOT_REASONS = new Set<RoundupApprovedRoot["reason"]>([
   "seedance",
   "droplet",
-  "gunslinger_dropbox",
-  "gunslinger_seedance",
+  "generator_cloud",
+  "generator_local",
 ]);
 
-function isApprovedRootReason(value: unknown): value is RoundupApprovedRoot["reason"] {
-  return typeof value === "string" &&
-    APPROVED_ROOT_REASONS.has(value as RoundupApprovedRoot["reason"]);
+/**
+ * Reason values written by earlier builds. Settings files already on disk still
+ * carry them, so every read maps them forward instead of failing validation and
+ * silently dropping the user's approved roots. The approval `id` is deliberately
+ * left alone: `watchedRootIds` references it verbatim.
+ */
+const LEGACY_APPROVED_ROOT_REASONS: Record<string, RoundupApprovedRoot["reason"]> = {
+  gunslinger_dropbox: "generator_cloud",
+  gunslinger_seedance: "generator_local",
+};
+
+/** Accepts current and legacy reason strings; returns the current spelling. */
+export function normalizeApprovedRootReason(
+  value: unknown
+): RoundupApprovedRoot["reason"] | null {
+  if (typeof value !== "string") return null;
+  if (APPROVED_ROOT_REASONS.has(value as RoundupApprovedRoot["reason"])) {
+    return value as RoundupApprovedRoot["reason"];
+  }
+  return LEGACY_APPROVED_ROOT_REASONS[value] ?? null;
 }
 
 // `let`, not `const`: all three live inside the project folder, which the
@@ -423,14 +437,19 @@ export function readRoundupSettings(): RoundupSettings {
       ? raw.disabledRoots.filter((id): id is RoundupWatchRootId => typeof id === "string")
       : [];
     const approvedRoots = Array.isArray(raw.approvedRoots)
-      ? raw.approvedRoots.filter(
-          (root): root is RoundupApprovedRoot =>
-            Boolean(root) &&
-            typeof root.id === "string" &&
-            typeof root.label === "string" &&
-            typeof root.path === "string" &&
-            isApprovedRootReason(root.reason)
-        )
+      ? raw.approvedRoots.flatMap((root): RoundupApprovedRoot[] => {
+          if (
+            !root ||
+            typeof root.id !== "string" ||
+            typeof root.label !== "string" ||
+            typeof root.path !== "string"
+          ) {
+            return [];
+          }
+          const reason = normalizeApprovedRootReason(root.reason);
+          if (!reason) return [];
+          return [{ id: root.id, label: root.label, path: root.path, reason }];
+        })
       : [];
     const watchedRootIds = Array.isArray(raw.watchedRootIds)
       ? raw.watchedRootIds.filter(
@@ -464,14 +483,19 @@ export function writeRoundupSettings(next: RoundupSettings): RoundupSettings {
     watchedRootIds: [...new Set(next.watchedRootIds ?? ["project"])].filter(
       (id) => typeof id === "string"
     ),
-    approvedRoots: (next.approvedRoots ?? []).filter(
-      (root) =>
-        root &&
-        typeof root.id === "string" &&
-        typeof root.label === "string" &&
-        typeof root.path === "string" &&
-        isApprovedRootReason(root.reason)
-    ),
+    approvedRoots: (next.approvedRoots ?? []).flatMap((root) => {
+      if (
+        !root ||
+        typeof root.id !== "string" ||
+        typeof root.label !== "string" ||
+        typeof root.path !== "string"
+      ) {
+        return [];
+      }
+      const reason = normalizeApprovedRootReason(root.reason);
+      if (!reason) return [];
+      return [{ id: root.id, label: root.label, path: root.path, reason }];
+    }),
   };
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
   const tmp = SETTINGS_PATH + `.${process.pid}.tmp`;

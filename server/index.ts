@@ -22,8 +22,10 @@ import poolAnalyzeRouter from "./routes/poolAnalyze.js";
 import poolOrganizeRouter from "./routes/poolOrganize.js";
 import stemsRouter from "./routes/stems.js";
 import universalClipperRouter from "./routes/universalClipper.js";
+import samplesRouter from "./routes/samples.js";
 import { publicError } from "./util/publicError.js";
 import { bootstrapProjectDir } from "./util/projectBootstrap.js";
+import { migrateRoundupRootReasons } from "./util/migrate.js";
 import { universalStemManager } from "./stems/universalManager.js";
 import { roundupWatcher } from "./util/roundupWatcher.js";
 import { flushTagsSync } from "./util/roundupTags.js";
@@ -168,6 +170,7 @@ app.use("/api", poolAnalyzeRouter);
 app.use("/api", poolOrganizeRouter);
 app.use("/api", stemsRouter);
 app.use("/api", universalClipperRouter);
+app.use("/api", samplesRouter);
 
 // In production, serve the built React UI from dist/ on the same port as the
 // API. Lets `npm start` run the whole app as one process — no Vite needed.
@@ -193,6 +196,29 @@ app.use(
   }
 );
 
+// A busy port is an ordinary situation (a second copy of the app, or a stale
+// process from a crashed run), so answer it with one actionable line instead of
+// an unhandled 'error' event and a Node stack trace.
+function reportListenFailure(err: NodeJS.ErrnoException): never {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `[clipper-cowboy] port ${config.port} is already in use. ` +
+        `Stop the other process (\`npm run stop\`, or \`lsof -ti tcp:${config.port} | xargs kill\`) ` +
+        `or start on a different port with \`PORT=<other> npm start\`.`
+    );
+  } else if (err.code === "EACCES") {
+    console.error(
+      `[clipper-cowboy] not allowed to bind port ${config.port}. ` +
+        `Choose a port above 1024 with \`PORT=<other> npm start\`.`
+    );
+  } else {
+    console.error(
+      `[clipper-cowboy] could not listen on ${config.host}:${config.port}: ${err.code ?? err.message}`
+    );
+  }
+  process.exit(1);
+}
+
 const httpServer = app.listen(config.port, config.host, () => {
   console.log(
     `[clipper-cowboy] listening on http://${config.host}:${config.port}`
@@ -209,10 +235,17 @@ const httpServer = app.listen(config.port, config.host, () => {
   console.log(`  OpenAI key  = ${config.openaiApiKey ? "set" : "(missing)"}`);
 
   bootstrapProjectDir();
+  try {
+    migrateRoundupRootReasons();
+  } catch (err) {
+    console.error("[migrate] roundup root reasons failed:", err);
+  }
   void roundupWatcher.start().catch((err) => {
     console.error("[roundup-watcher] failed to start:", err);
   });
 });
+
+httpServer.on("error", reportListenFailure);
 
 let stopping = false;
 function stop(signal: NodeJS.Signals): void {

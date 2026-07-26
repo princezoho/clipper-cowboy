@@ -505,7 +505,7 @@ export default function EditorOverlay({
       return;
     }
     if (exportMode !== "source" && dur <= 0) {
-      setError("Video duration not ready yet — wait a moment and try again.");
+      setError("Video duration not ready yet. Wait a moment and try again.");
       return;
     }
     setExporting(true);
@@ -930,7 +930,7 @@ export default function EditorOverlay({
         {editingClipId && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-yellow-400/40 bg-yellow-500/15 px-4 py-1.5 text-xs text-yellow-300">
             <span>
-              Editing existing clip — Export will overwrite this clip in place.
+              Editing existing clip. Export will overwrite this clip in place.
             </span>
             <button
               className="rounded border border-yellow-400/40 px-2 py-0.5 text-[11px] text-yellow-200 hover:bg-yellow-500/20"
@@ -1277,7 +1277,7 @@ function CharacterStrip({
           <span
             key={c.id}
             className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-200"
-            title="AI matched — click × to remove from this clip"
+            title="AI matched. Click × to remove from this clip"
           >
             {c.name}
             <button
@@ -1321,7 +1321,7 @@ function CharacterStrip({
         <div className="flex flex-col gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-2">
           <div className="text-xs text-amber-200">
             Unknown character{unknownPeople.length === 1 ? "" : "s"} spotted by
-            AI — name, connect to existing, or ignore:
+            AI. Name, connect to existing, or ignore:
           </div>
           <div className="flex flex-wrap gap-3">
             {unknownPeople.map((u, idx) => (

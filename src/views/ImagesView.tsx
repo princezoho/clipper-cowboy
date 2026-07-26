@@ -28,6 +28,7 @@ import { fireToast } from "../lib/toast";
 import FieldStatus from "../components/FieldStatus";
 import ChipPicker from "../components/ChipPicker";
 import CategorySelect from "../components/CategorySelect";
+import { WALKTHROUGH_VIDEO } from "../components/EmptyGuide";
 import { useDebouncedAutosave } from "../lib/useDebouncedAutosave";
 import {
   imagePreviewAspectRatio,
@@ -397,7 +398,7 @@ export default function ImagesView({
       fireToast({
         kind: "error",
         title: "Nothing to upload",
-        body: `${rejected} file${rejected === 1 ? "" : "s"} ignored — only PNG / JPG / WebP / GIF are supported`,
+        body: `${rejected} file${rejected === 1 ? "" : "s"} ignored. Only PNG / JPG / WebP / GIF are supported`,
       });
       return;
     }
@@ -979,8 +980,20 @@ function EmptyState({
     >
       <div className="space-y-1">
         <div className="text-xl font-semibold text-ink-100">No images yet</div>
-        <div className="text-sm text-ink-400">
-          Drop image files here, paste from clipboard, or click below to upload.
+        <div className="mx-auto max-w-lg text-sm leading-relaxed text-ink-400">
+          Images are the reference side of your world: character sheets,
+          location plates, and the prompt stills you generate from. Drop files
+          here, paste from the clipboard, or upload below.
+        </div>
+        <div className="pt-2">
+          <a
+            href={WALKTHROUGH_VIDEO}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-ink-300 underline decoration-ink-600 hover:text-ink-100"
+          >
+            Watch the walkthrough
+          </a>
         </div>
       </div>
 
@@ -1257,7 +1270,7 @@ function FolderRow({
                   isRoot
                     ? "Can't delete the root"
                     : node.count > 0
-                      ? "Folder isn't empty — move or delete its contents first"
+                      ? "Folder isn't empty. Move or delete its contents first"
                       : ""
                 }
                 className="block w-full px-3 py-1.5 text-left text-xs text-red-300 hover:bg-ink-800 disabled:cursor-not-allowed disabled:text-ink-600"
@@ -1842,7 +1855,7 @@ function ImageLightbox({
               </button>
             </div>
             <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap rounded bg-ink-950 p-2 font-mono text-[11px] text-ink-200">
-              {item.prompt || "—"}
+              {item.prompt || "-"}
             </pre>
           </div>
 

@@ -42,6 +42,7 @@ import { fireToast } from "../lib/toast";
 import FieldStatus from "../components/FieldStatus";
 import ChipPicker from "../components/ChipPicker";
 import { useDebouncedAutosave } from "../lib/useDebouncedAutosave";
+import { EmptyGuide, LoadStarterProjectButton } from "../components/EmptyGuide";
 
 interface Props {
   items: LibraryItem[];
@@ -61,6 +62,8 @@ interface Props {
   onSearchChange: (s: string) => void;
   onClearFilters: () => void;
   onPreviewInEditor?: (id: string) => void;
+  /** Reloads every tab, for changes that touch more than the library. */
+  onSampleLoaded?: () => void;
 }
 
 function slugAlnum(s: string): string {
@@ -97,6 +100,7 @@ export default function LibraryView({
   onSearchChange,
   onClearFilters,
   onPreviewInEditor,
+  onSampleLoaded,
 }: Props) {
   const [preview, setPreview] = useState<LibraryItem | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -664,12 +668,26 @@ export default function LibraryView({
   }
   if (items.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-ink-400">
-        <div className="text-lg text-ink-200">Library is empty</div>
-        <div className="max-w-md text-sm">
-          Open a pool video, mark in/out, and export. Your clips show up here.
-        </div>
-      </div>
+      <EmptyGuide
+        title="No saved clips yet"
+        lead="The Library is the coverage you can reuse: every exported keeper with its characters, scenes, objects, and tags, filterable when the next cut needs a shot."
+        steps={[
+          <>
+            Go to the <span className="font-semibold text-ink-200">Pool</span>{" "}
+            tab and open a source montage.
+          </>,
+          <>
+            Mark in and out, give the moment a name, and attach the characters,
+            scenes, objects, and tags that make it findable later.
+          </>,
+          <>
+            Export. The clip lands here, and in{" "}
+            <span className="font-mono text-ink-200">clips/</span> inside your
+            project folder, ready to filter and send to Premiere.
+          </>,
+        ]}
+        primary={<LoadStarterProjectButton onLoaded={onSampleLoaded ?? onChanged} />}
+      />
     );
   }
 
@@ -834,7 +852,7 @@ export default function LibraryView({
             className="rounded-md bg-accent-500 px-3 py-2 text-sm font-semibold text-black hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40"
             title={
               filtered.length === 0
-                ? "No clips match — adjust filters first"
+                ? "No clips match. Adjust filters first"
                 : `Export ${filtered.length} clip${filtered.length === 1 ? "" : "s"} as a folder for Premiere`
             }
           >
@@ -1741,7 +1759,7 @@ function ExportCollectionModal({
           <div className="flex flex-col gap-3 p-5 text-sm text-ink-200">
             <div>
               Exported <strong>{done.fileCount}</strong> clip
-              {done.fileCount === 1 ? "" : "s"} ({formatBytes(done.bytes)}) —{" "}
+              {done.fileCount === 1 ? "" : "s"} ({formatBytes(done.bytes)}):{" "}
               {done.links} hardlink{done.links === 1 ? "" : "s"},{" "}
               {done.copies} cop{done.copies === 1 ? "y" : "ies"}.
             </div>
@@ -2082,7 +2100,7 @@ function ClipCard({
             <button
               type="button"
               disabled={isMissing}
-              title={isMissing ? "File is missing — repair first" : undefined}
+              title={isMissing ? "File is missing. Repair first" : undefined}
               onClick={() => {
                 setMenuOpen(false);
                 if (isMissing) return;
@@ -2095,7 +2113,7 @@ function ClipCard({
             <button
               type="button"
               disabled={isMissing}
-              title={isMissing ? "File is missing — repair first" : undefined}
+              title={isMissing ? "File is missing. Repair first" : undefined}
               onClick={() => {
                 setMenuOpen(false);
                 if (isMissing) return;
@@ -2115,7 +2133,7 @@ function ClipCard({
                   const r = await copyLibraryToClipboard([item.id]);
                   fireToast({
                     kind: "success",
-                    title: `Copied ${r.count} clip — paste into Finder/Slack. For Premiere use Send to Premiere.`,
+                    title: `Copied ${r.count} clip. Paste into Finder/Slack. For Premiere use Send to Premiere.`,
                   });
                 } catch (err) {
                   fireToast({ kind: "error", title: "Clipboard copy failed", body: String(err) });
@@ -2128,7 +2146,7 @@ function ClipCard({
             <button
               type="button"
               disabled={isMissing}
-              title={isMissing ? "File is missing — repair first" : undefined}
+              title={isMissing ? "File is missing. Repair first" : undefined}
               onClick={async () => {
                 setMenuOpen(false);
                 if (isMissing) return;

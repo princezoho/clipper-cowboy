@@ -4,15 +4,19 @@
 
 # Clipper Cowboy
 
-> Keep every good shot in the world you’re building.
+**A local-first shot library for filmmakers building an IP out of AI-generated
+video.** You point it at the folder where your montages pile up. It gives you
+back a searchable cast, scene, and prop catalog: mark in and out, name the
+moment, tag who and where, and every keeper becomes coverage you can pull for
+the next episode, trailer, social cut, or pitch.
 
-Clipper Cowboy turns a growing pile of AI-generated montages into reusable
-coverage for your characters, scenes, and objects. When the next episode,
-trailer, social cut, or pitch needs a shot, your world is ready to search—not
-lost in raw video.
+For the editor whose good shots are currently scattered across forty
+generations with names like `output_final_v3.mp4`. Runs entirely on your
+machine, needs no account, and no footage leaves your computer unless you
+explicitly ask for an AI pass.
 
 <p align="center">
-  <img src="./docs/screenshots/landing-pool.png" alt="Clipper Cowboy's Pool view for reviewing video montages" width="90%" />
+  <img src="./docs/screenshots/hero-pool.png" alt="Clipper Cowboy's Pool view: source montages grouped in folders, each with clip counts, draft badges, and clipped or not-clipped status" width="90%" />
 </p>
 
 <p align="center">
@@ -51,7 +55,7 @@ continue from the same source.
 
 ## Build a cast, not a tag pile
 
-![Editor view showing precise clip range controls and character, scene, object, name, description, and tag fields](./docs/screenshots/editor-clip-range.png)
+![Editor view showing precise in and out point controls alongside character, scene, object, name, description, and tag fields](./docs/screenshots/hero-editor.png)
 
 A keeper can carry a character, a scene, an object, a name, and the context
 that makes it usable later. Reference images help ground recurring people and
@@ -65,12 +69,16 @@ instead of reopening every montage. For example, a catalog query might look
 like:
 
 ```text
-Character: Montoya + Scene: desert + Tag: horseback → 12 ready clips
+Character: Ada Reyes + Scene: Signal Tower + Tag: practical light → 6 ready clips
 ```
 
 That is a representative query, not a claim about your catalog. The point is
 to make character, location, prop, action, and transition coverage available
 when the next edit starts.
+
+<p align="center">
+  <img src="./docs/screenshots/hero-library.png" alt="Clipper Cowboy's Library view: exported clips with names, descriptions, tags, characters, scenes, and objects, above a search field and an export collection button" width="90%" />
+</p>
 
 ## Quick start
 
@@ -94,6 +102,21 @@ bundled through [`ffmpeg-static`][ffmpeg-static] and
 Open <http://localhost:5173>. The first-run wizard creates or selects a project
 folder and can optionally save an OpenAI key locally; clip review, cataloging,
 and export work without a key.
+
+### First run, with nothing of your own yet
+
+A new project folder is empty, so the Pool and Library start empty too. Each
+tab explains what belongs in it, and the Pool offers **Load sample project**:
+one click copies two tiny synthetic montages and three catalogued clips into
+your project folder so you can walk the whole loop before importing anything
+real. They are ffmpeg test patterns, not footage, and you can delete them from
+Finder whenever you like. There is also a
+[Roundup walkthrough video](./public/roundup/tutorial/roundup-walkthrough.mp4)
+in the app and in this repo.
+
+<p align="center">
+  <img src="./docs/screenshots/first-run-empty-pool.png" alt="Clipper Cowboy's first-run Pool tab, explaining what to add and offering to load a sample project" width="60%" />
+</p>
 
 For a single local server after a build:
 
@@ -177,13 +200,13 @@ Ready, and a persisted Live fixture verified state. See
 
 ### Architecture
 
-1. **Import / indexing** — select `PROJECT_DIR`; Clipper scans source video and
+1. **Import / indexing**: select `PROJECT_DIR`; Clipper scans source video and
    writes project-local sidecar state.
-2. **Review loop** — use the React UI to annotate shots and adjust ranges.
-3. **Optional AI pass** — server-side OpenAI calls run only when configured.
-4. **Export pipeline** — a keyframe-aware exporter writes accepted clips to
+2. **Review loop**: use the React UI to annotate shots and adjust ranges.
+3. **Optional AI pass**: server-side OpenAI calls run only when configured.
+4. **Export pipeline**: a keyframe-aware exporter writes accepted clips to
    `clips/`.
-5. **Catalog persistence** — clips, entities, drafts, and activity live in
+5. **Catalog persistence**: clips, entities, drafts, and activity live in
    `.clipcataloger/` inside the project.
 
 - **Frontend (`src/`)**: Vite + React 18 + Tailwind UI.
@@ -227,7 +250,7 @@ keyframe-aligned interior when available; trim edges may be losslessly
 re-encoded, so an export should not be described as bit-identical as a whole.
 
 For "Source" and "Clip + Source" bundle modes, the source is copied with
-`cp -c` (APFS `clonefile(2)`) on macOS — instant, zero data written,
+`cp -c` (APFS `clonefile(2)`) on macOS: instant, zero data written,
 copy-on-write. Falls back to a regular byte copy on non-APFS volumes.
 
 ## Project structure
@@ -239,12 +262,13 @@ clipper-cowboy/
 │   ├── smartcut.ts     # keyframe-aware lossless export
 │   └── config.ts       # env + on-disk paths
 ├── mcp/                # Standalone stdio MCP server for agents
+├── samples/            # Synthetic starter project offered on first run
 ├── src/                # Vite + React + Tailwind frontend
 │   ├── views/          # Pool, Library, Editor, Onboarding, Settings…
 │   ├── components/     # Video player, timeline, meta form…
 │   └── lib/            # API client, save-state store, hooks
 ├── public/             # static assets (logo.png UI mask; optional logo.svg for Dock)
-├── docs/BRAND-ASSETS.md # logo paths, icon build, Finder cache — read before changing brand files
+├── docs/BRAND-ASSETS.md # logo paths, icon build, Finder cache (read first)
 └── .clip-server.mjs    # esbuild bundle of the server (gitignored)
 ```
 
@@ -270,22 +294,26 @@ PROJECT_DIR/
 > folder name is just a stable identifier from the project's earlier life
 > as "clip-cataloger".
 
-## Contributing
+## Contributing and community
 
-PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to get a dev
-loop running and what we're looking for.
+PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get a dev loop
+running and what we're looking for. Participation is covered by the
+[Code of Conduct](./CODE_OF_CONDUCT.md). For help or questions, start with
+[SUPPORT.md](./SUPPORT.md); to report a vulnerability, follow
+[SECURITY.md](./SECURITY.md).
 
 ## License
 
-[MIT](LICENSE).
+[MIT](./LICENSE). Third-party components are listed in
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ## Credits
 
 Built with:
 
-- [`ffmpeg-static`][ffmpeg-static] + [`ffprobe-static`][ffprobe-static] —
+- [`ffmpeg-static`][ffmpeg-static] + [`ffprobe-static`][ffprobe-static]:
   bundled ffmpeg binaries so users don't need a system install.
-- [`openai`](https://github.com/openai/openai-node) — GPT-4o vision for clip
+- [`openai`](https://github.com/openai/openai-node): GPT-4o vision for clip
   captioning + character recognition.
 - [Vite](https://github.com/vitejs/vite) +
   [React](https://github.com/facebook/react) +

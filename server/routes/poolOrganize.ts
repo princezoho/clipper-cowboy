@@ -288,7 +288,7 @@ router.post("/pool/analyze-content", async (req, res) => {
   const ids = parsed.data.ids.slice(0, MAX_BATCH);
   if (parsed.data.ids.length > MAX_BATCH) {
     res.status(400).json({
-      error: `too many sources — split into batches of ${MAX_BATCH}`,
+      error: `too many sources: split into batches of ${MAX_BATCH}`,
     });
     return;
   }

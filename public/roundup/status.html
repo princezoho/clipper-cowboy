@@ -400,7 +400,7 @@
             <li>Cloud-native Dropbox or Google Drive watching; local synced folders only behave like ordinary local roots when explicitly approved.</li>
             <li>Premiere Pro 26.2.2 is installed and was already running. UXP Developer Tool is not installed, so the panel was not loaded and no open project was inspected.</li>
             <li>No automatic timeline edits. Optional placement requires a separate explicit panel action.</li>
-            <li>Automatic discovery of unresolved Gunslinger, Seedance, or droplet roots outside known project-local locations.</li>
+            <li>Automatic discovery of unresolved generator output or droplet roots outside known project-local locations.</li>
             <li>Guaranteed cross-volume or cross-machine move matching.</li>
           </ul>
           <div class="evidence">A missed watch event or unseeded file may still require manual hunting.</div>
@@ -464,7 +464,7 @@
           <div class="step-number">02</div>
           <div class="step-copy">
             <h3>Review and approve watch roots</h3>
-            <p>Turn off anything you do not want watched. Keep only the project and chosen Downloads/Desktop roots. Add existing Gunslinger, Seedance, or droplet folders explicitly when needed.</p>
+            <p>Turn off anything you do not want watched. Keep only the project and chosen Downloads/Desktop roots. Add existing generator output or droplet folders explicitly when needed.</p>
             <p class="expect"><b>Expected:</b> each enabled root shows an existing canonical path and reason.</p>
             <p class="safety"><b>Safety:</b> approval is metadata-only; hidden/system trees, symlinks, and paths outside the safe policy are rejected.</p>
           </div>
@@ -474,7 +474,7 @@
               <label class="root"><input type="checkbox" checked disabled><span>Project<small>/approved/clip-project</small></span></label>
               <label class="root"><input type="checkbox" checked disabled><span>Downloads<small>~/Downloads</small></span></label>
               <label class="root"><input type="checkbox" disabled><span>Desktop<small>review before enabling</small></span></label>
-              <label class="root"><input type="checkbox" checked disabled><span>Seedance / Gunslinger<small>explicitly approved</small></span></label>
+              <label class="root"><input type="checkbox" checked disabled><span>Generator output<small>explicitly approved</small></span></label>
             </div><div class="mock-row" style="margin-top:10px"><span class="mock-sub">Droplet destination: unresolved</span><button class="mock-button ghost">Validate and approve</button></div></div></div>
           </div>
         </article>

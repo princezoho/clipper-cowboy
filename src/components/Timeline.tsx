@@ -149,7 +149,7 @@ export default function Timeline({
                 left: `${pct(c.in)}%`,
                 width: `${Math.max(0.1, pct(c.out - c.in))}%`,
               }}
-              title={`${c.name} — ${formatTime(c.in)} → ${formatTime(c.out)}\nClick to load this clip in the editor`}
+              title={`${c.name}: ${formatTime(c.in)} → ${formatTime(c.out)}\nClick to load this clip in the editor`}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onLoadExisting?.(c.id);

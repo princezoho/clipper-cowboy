@@ -78,7 +78,7 @@ function resolveFolder(rawRelPath: string): string {
     }
     if (!FOLDER_SEGMENT_RE.test(seg)) {
       throw new Error(
-        `invalid folder name "${seg}" — use letters, numbers, spaces, _ or -`
+        `invalid folder name "${seg}": use letters, numbers, spaces, _ or -`
       );
     }
   }
@@ -359,7 +359,7 @@ router.delete("/pool/folders", (req, res) => {
   }
   if (entries.length > 0) {
     res.status(409).json({
-      error: `folder is not empty (${entries.length} item${entries.length === 1 ? "" : "s"} inside) — move or delete its contents first`,
+      error: `folder is not empty (${entries.length} item${entries.length === 1 ? "" : "s"} inside). Move or delete its contents first`,
     });
     return;
   }

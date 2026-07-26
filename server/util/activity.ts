@@ -33,6 +33,7 @@ export type ActivityKind =
   | "pool_source_moved"
   | "pool_organize_analyzed"
   | "universal_package_created"
+  | "sample_project_loaded"
   | "stems_queued"
   | "stems_completed"
   | "stems_failed";

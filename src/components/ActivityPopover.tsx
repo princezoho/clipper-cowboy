@@ -204,6 +204,7 @@ const ICON: Record<ActivityKind, string> = {
   pool_source_moved: "📂",
   pool_organize_analyzed: "🤖",
   universal_package_created: "🪢",
+  sample_project_loaded: "🌵",
 };
 
 function describeEvent(event: ActivityEvent): {
@@ -317,6 +318,15 @@ function describeEvent(event: ActivityEvent): {
         icon,
         title: `Sent ${c} clip${c === 1 ? "" : "s"} to Premiere`,
         sub: rel,
+      };
+    }
+    case "sample_project_loaded": {
+      const c = typeof p.clips === "number" ? p.clips : 0;
+      const s = typeof p.sources === "number" ? p.sources : 0;
+      return {
+        icon,
+        title: "Loaded the starter project",
+        sub: `${rel} · ${s} source${s === 1 ? "" : "s"}, ${c} clip${c === 1 ? "" : "s"}`,
       };
     }
     default:

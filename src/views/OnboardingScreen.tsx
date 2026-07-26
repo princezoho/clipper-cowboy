@@ -184,8 +184,8 @@ export default function OnboardingScreen({
           <Step n={2} title="(Optional) Add your OpenAI API key">
             <p className="text-sm text-ink-400">
               Enables AI auto-fill for clip names, descriptions, and tags, plus
-              character recognition. Skip if you'd rather name clips by hand —
-              everything else works without it. Stored in your local{" "}
+              character recognition. Skip if you'd rather name clips by hand.
+              Everything else works without it. Stored in your local{" "}
               <code className="font-mono text-ink-300">.env</code>, never sent
               anywhere except OpenAI.{" "}
               <a
@@ -236,7 +236,7 @@ export default function OnboardingScreen({
         </form>
 
         <div className="mt-6 text-center text-xs text-ink-500">
-          ffmpeg is bundled — no system install needed. macOS, Linux, and
+          ffmpeg is bundled, no system install needed. macOS, Linux, and
           Windows all work.
         </div>
       </main>
@@ -299,7 +299,7 @@ function PathStatus({
   if (check.canCreate) {
     return (
       <div className="text-xs text-amber-300">
-        Folder doesn't exist yet — it'll be created when you continue.
+        Folder doesn't exist yet. It'll be created when you continue.
       </div>
     );
   }

@@ -5,7 +5,6 @@ build/
 .env.local
 .clipcataloger/
 test-results/
-site/media/fonts/
 .DS_Store
 *.log
 

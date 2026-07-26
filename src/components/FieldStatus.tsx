@@ -32,7 +32,7 @@ export default function FieldStatus({ state, errorMessage, className }: Props) {
 
   if (state === "pending") {
     return (
-      <span className={wrap} title="Pending — debouncing" data-testid="field-status" data-state="pending">
+      <span className={wrap} title="Pending, debouncing" data-testid="field-status" data-state="pending">
         <span
           className="inline-block h-1.5 w-1.5 rounded-full"
           style={{ background: "#facc15", boxShadow: "0 0 4px #facc1580" }}

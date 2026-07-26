@@ -8,6 +8,7 @@ import {
   isAllowlistedWatchPath,
   isRoundupMediaPath,
   lookupRoundup,
+  normalizeApprovedRootReason,
   readRoundupSettings,
   readRoundupTail,
   writeRoundupSettings,
@@ -108,12 +109,18 @@ const WatcherBody = z.object({
 const ApproveRootBody = z.object({
   path: z.string().min(1).max(4096),
   label: z.string().trim().min(1).max(120),
-  reason: z.enum([
-    "seedance",
-    "droplet",
-    "gunslinger_dropbox",
-    "gunslinger_seedance",
-  ]),
+  // The two legacy spellings stay accepted so older clients and scripts keep
+  // working; normalizeApprovedRootReason maps them to the current names below.
+  reason: z
+    .enum([
+      "seedance",
+      "droplet",
+      "generator_cloud",
+      "generator_local",
+      "gunslinger_dropbox",
+      "gunslinger_seedance",
+    ])
+    .transform((value) => normalizeApprovedRootReason(value)!),
   approved: z.literal(true),
 });
 

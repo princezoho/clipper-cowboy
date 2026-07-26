@@ -9,6 +9,7 @@ import {
   patchCharacter,
 } from "../lib/api";
 import { fireToast } from "../lib/toast";
+import { WALKTHROUGH_VIDEO } from "../components/EmptyGuide";
 
 interface Props {
   reloadKey?: number;
@@ -132,9 +133,25 @@ export default function CharactersView({
       {loading && items.length === 0 ? (
         <div className="text-sm text-ink-400">Loading characters…</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-ink-800 bg-ink-900/40 p-8 text-center text-sm text-ink-400">
-          No characters yet. Add one above to start auto-tagging clips that
-          feature them.
+        <div className="space-y-3 rounded-xl border border-dashed border-ink-800 bg-ink-900/40 p-8 text-center text-sm text-ink-400">
+          <div className="text-base font-semibold text-ink-100">
+            No cast members yet
+          </div>
+          <p className="mx-auto max-w-lg leading-relaxed">
+            Characters are the recurring people of your world. Name one above,
+            then every clip you tag with them becomes searchable coverage: ask
+            the Library for that character in a given scene and get the shots
+            back instead of reopening montages. Reference images let the
+            optional AI pass recognize them for you.
+          </p>
+          <a
+            href={WALKTHROUGH_VIDEO}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-block rounded-md border border-ink-700 px-3 py-1.5 text-xs text-ink-200 hover:bg-ink-800"
+          >
+            Watch the walkthrough
+          </a>
         </div>
       ) : (
         <>
@@ -278,7 +295,7 @@ function CharacterCard({
           />
         ) : (
           <div className="px-4 text-center text-xs text-ink-500">
-            No reference images yet — open a pool clip and add a frame from the
+            No reference images yet. Open a pool clip and add a frame from the
             editor.
           </div>
         )}

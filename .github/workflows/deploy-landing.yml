@@ -1,8 +1,25 @@
 name: Deploy landing site
 
+# Publishes the static site/ folder to GitHub Pages. Requires a one-time
+# account action first: repository Settings > Pages > Source = GitHub Actions.
+# Until that is set, this workflow fails at the Configure Pages step.
+#
+# The site currently targets the default Pages address,
+# https://princezoho.github.io/clipper-cowboy/.
+#
+# To move to clippercowboy.jejestudios.com later:
+#   1. Add the DNS records listed in site/README.md.
+#   2. Enter the domain in Settings > Pages > Custom domain. GitHub commits the
+#      CNAME file itself, so do not add one here by hand.
+#   3. Update the canonical link and the og:/twitter: URLs in site/index.html.
+# No CNAME file is added deliberately: committing one while DNS still points
+# elsewhere breaks the working default Pages URL.
+
 on:
   workflow_dispatch:
 
+# Least privilege for a Pages deployment: read the repo, mint an OIDC token,
+# write the Pages deployment. No contents: write is needed.
 permissions:
   contents: read
   pages: write
