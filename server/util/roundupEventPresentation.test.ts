@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { presentRoundupEvent } from "./roundupEventPresentation.js";
@@ -76,7 +77,9 @@ test("normalizes Unicode and safely handles legacy or incomplete fields", () => 
 });
 
 test("Roundup tail API records preserve raw paths and add presentation", async () => {
-  const fixture = fs.mkdtempSync(path.join(process.cwd(), ".roundup-event-test-"));
+  // Home, not process.cwd(): this becomes PROJECT_DIR, and a checkout under a
+  // FORBIDDEN_PREFIXES path (macOS /tmp is /private/tmp) is not allowlisted.
+  const fixture = fs.mkdtempSync(path.join(os.homedir(), ".roundup-event-test-"));
   process.env.PROJECT_DIR = fixture;
   process.env.DOTENV_CONFIG_PATH = "/dev/null";
   try {

@@ -5,7 +5,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { config, isSupportedVideo, SUPPORTED_VIDEO_EXTS } from "../config.js";
+import {
+  config,
+  isSupportedVideo,
+  onConfigReload,
+  SUPPORTED_VIDEO_EXTS,
+} from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { scheduleShotlistRebuild } from "../util/shotlist.js";
 import { smartCut } from "../smartcut.js";
@@ -159,6 +164,16 @@ function listOrphans(metas: LibraryMeta[]): {
 
 const idToFile = new Map<string, string>();
 const idToSource = new Map<string, string>();
+
+// Clip/source paths resolved under the previous project folder must not remain
+// reachable after a PROJECT_DIR change; refreshIndex() rebuilds both maps
+// against the new folder on the next /api/library read.
+onConfigReload({
+  apply: () => {
+    idToFile.clear();
+    idToSource.clear();
+  },
+});
 
 function pickSourcePath(m: LibraryMeta): string | null {
   const sourceCopy = safeExistingFile(config.clipsDir, m.sourceCopyPath);

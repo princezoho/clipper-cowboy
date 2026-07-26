@@ -12,96 +12,153 @@ function expandHome(p: string): string {
 }
 
 /**
- * Resolve the project folder. Priority:
+ * Which env var, if any, explicitly points at a project folder. Priority:
  *   1. PROJECT_DIR (new — preferred)
  *   2. POOL_DIR    (legacy fallback so existing .env files keep working)
- *   3. ~/ClipCataloger
+ * Returns "" when neither is set, meaning we fall back to ~/ClipCataloger and
+ * the first-run wizard still owes us an answer.
  */
-function resolveProjectDir(): string {
-  const candidates = [
-    process.env.PROJECT_DIR,
-    process.env.POOL_DIR,
-  ]
+function configuredProjectDir(): string {
+  return [process.env.PROJECT_DIR, process.env.POOL_DIR]
     .map((v) => (v ?? "").trim())
-    .filter(Boolean);
-  const raw = candidates[0];
-  const resolved = raw
+    .find(Boolean) ?? "";
+}
+
+export interface AppConfig {
+  host: string;
+  port: number;
+  projectDir: string;
+  /** False until the user explicitly picks a folder (first-run wizard). */
+  projectDirConfigured: boolean;
+  poolDir: string;
+  clipsDir: string;
+  charactersDir: string;
+  exportsDir: string;
+  imagesDir: string;
+  derivedDir: string;
+  stemsDir: string;
+  internalDir: string;
+  clipMetaDir: string;
+  thumbCacheDir: string;
+  captionTmpDir: string;
+  durationsPath: string;
+  imageMetaDir: string;
+  imageThumbsDir: string;
+  sourceMetaDir: string;
+  shotlistMdPath: string;
+  shotlistCsvPath: string;
+  openaiApiKey: string;
+}
+
+/**
+ * Derive every path from the current environment and create the folders. Pure
+ * apart from those mkdirs: it returns a fresh object rather than mutating the
+ * live `config`, so a failure (unwritable volume, say) leaves the running
+ * process pointed at the directory it was already using.
+ */
+function buildConfig(port: number): AppConfig {
+  const raw = configuredProjectDir();
+  const projectDir = raw
     ? path.resolve(expandHome(raw))
     : path.resolve(os.homedir(), "ClipCataloger");
-  fs.mkdirSync(resolved, { recursive: true });
-  return resolved;
+  const derivedDir = path.join(projectDir, "derived");
+  const internalDir = path.join(projectDir, ".clipcataloger");
+
+  const next: AppConfig = {
+    // This app can read and mutate local media and credentials. Keep it on the
+    // loopback interface unless a future authenticated deployment mode is added.
+    host: "127.0.0.1",
+    port,
+    projectDir,
+    projectDirConfigured: Boolean(raw),
+    // poolDir == projectDir (sources live at the project root)
+    poolDir: projectDir,
+    clipsDir: path.join(projectDir, "clips"),
+    charactersDir: path.join(projectDir, "characters"),
+    exportsDir: path.join(projectDir, "exports"),
+    imagesDir: path.join(projectDir, "images"),
+    derivedDir,
+    stemsDir: path.join(derivedDir, "stems"),
+    internalDir,
+    clipMetaDir: path.join(internalDir, "clip-meta"),
+    thumbCacheDir: path.join(internalDir, "thumbs"),
+    captionTmpDir: path.join(internalDir, "caption-tmp"),
+    durationsPath: path.join(internalDir, "durations.json"),
+    imageMetaDir: path.join(internalDir, "image-meta"),
+    imageThumbsDir: path.join(internalDir, "image-thumbs"),
+    sourceMetaDir: path.join(internalDir, "source-meta"),
+    shotlistMdPath: path.join(projectDir, "shotlist.md"),
+    shotlistCsvPath: path.join(projectDir, "shotlist.csv"),
+    openaiApiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
+  };
+
+  for (const d of [
+    next.projectDir,
+    next.clipsDir,
+    next.charactersDir,
+    next.exportsDir,
+    next.imagesDir,
+    next.derivedDir,
+    next.stemsDir,
+    next.internalDir,
+    next.clipMetaDir,
+    next.thumbCacheDir,
+    next.captionTmpDir,
+    next.imageMetaDir,
+    next.imageThumbsDir,
+    next.sourceMetaDir,
+  ]) {
+    fs.mkdirSync(d, { recursive: true });
+  }
+  return next;
 }
 
-const projectDir = resolveProjectDir();
-const clipsDir = path.join(projectDir, "clips");
-const charactersDir = path.join(projectDir, "characters");
-const exportsDir = path.join(projectDir, "exports");
-const imagesDir = path.join(projectDir, "images");
-const derivedDir = path.join(projectDir, "derived");
-const stemsDir = path.join(derivedDir, "stems");
-const internalDir = path.join(projectDir, ".clipcataloger");
+export const config: AppConfig = buildConfig(Number(process.env.PORT ?? 47474));
 
-const clipMetaDir = path.join(internalDir, "clip-meta");
-const thumbCacheDir = path.join(internalDir, "thumbs");
-const captionTmpDir = path.join(internalDir, "caption-tmp");
-const durationsPath = path.join(internalDir, "durations.json");
-const imageMetaDir = path.join(internalDir, "image-meta");
-const imageThumbsDir = path.join(internalDir, "image-thumbs");
-const sourceMetaDir = path.join(internalDir, "source-meta");
-
-const shotlistMdPath = path.join(projectDir, "shotlist.md");
-const shotlistCsvPath = path.join(projectDir, "shotlist.csv");
-
-for (const d of [
-  clipsDir,
-  charactersDir,
-  exportsDir,
-  imagesDir,
-  derivedDir,
-  stemsDir,
-  internalDir,
-  clipMetaDir,
-  thumbCacheDir,
-  captionTmpDir,
-  imageMetaDir,
-  imageThumbsDir,
-  sourceMetaDir,
-]) {
-  fs.mkdirSync(d, { recursive: true });
+/**
+ * Modules that cannot read `config` lazily — because they derive a path or an
+ * index once at import time — register here so `reloadConfig()` can bring them
+ * along. Without this, a runtime PROJECT_DIR change would leave some consumers
+ * writing to the old folder, which is worse than not reloading at all.
+ */
+export interface ConfigReloadHooks {
+  /** Persist state that belongs to the outgoing folder. Runs before the swap. */
+  flush?: () => void;
+  /** Recompute derived paths and drop caches. Runs after the swap. */
+  apply: () => void;
 }
 
-export const config = {
-  // This app can read and mutate local media and credentials. Keep it on the
-  // loopback interface unless a future authenticated deployment mode is added.
-  host: "127.0.0.1",
-  port: Number(process.env.PORT ?? 47474),
-  projectDir,
-  // poolDir == projectDir (sources live at the project root)
-  poolDir: projectDir,
-  clipsDir,
-  charactersDir,
-  exportsDir,
-  imagesDir,
-  derivedDir,
-  stemsDir,
-  internalDir,
-  clipMetaDir,
-  thumbCacheDir,
-  captionTmpDir,
-  durationsPath,
-  imageMetaDir,
-  imageThumbsDir,
-  sourceMetaDir,
-  shotlistMdPath,
-  shotlistCsvPath,
-  openaiApiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
-};
+const reloadHooks: ConfigReloadHooks[] = [];
 
-export const POOL_CACHE_DIR = thumbCacheDir; // legacy alias (still used by some routes)
-export const LIBRARY_META_DIR = clipMetaDir;
-export const LIBRARY_CACHE_DIR = thumbCacheDir;
-export const CHARACTERS_REFS_DIR = charactersDir;
-export const CAPTION_TMP_DIR = captionTmpDir;
+export function onConfigReload(hooks: ConfigReloadHooks): void {
+  reloadHooks.push(hooks);
+}
+
+/**
+ * Re-derive the whole config from `process.env` in place, so that every
+ * `config.x` read and every registered consumer sees the new project folder
+ * within the same process. Callers must update `process.env` first.
+ *
+ * Throws if the new folder cannot be created, having changed nothing.
+ */
+export function reloadConfig(): void {
+  // The HTTP listener is already bound, so the port stays put for the lifetime
+  // of the process even if PORT changes in .env.
+  const next = buildConfig(config.port);
+  for (const hook of reloadHooks) {
+    try {
+      hook.flush?.();
+    } catch {
+      // Flushes are observational. Never let one block the swap — that would
+      // strand the caller on the old folder with no way to say so.
+      console.error("[config] a reload flush hook failed");
+    }
+  }
+  Object.assign(config, next);
+  for (const hook of reloadHooks) {
+    hook.apply();
+  }
+}
 
 export const SUPPORTED_VIDEO_EXTS = new Set([
   ".mp4",

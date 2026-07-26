@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+// PROJECT_DIR has to satisfy the production watch allowlist in roundup.ts, so
+// the fixture cannot sit under a FORBIDDEN_PREFIXES entry. process.cwd() is
+// only allowlisted when the checkout happens to live under home, which made
+// these tests fail outright on a clone under /tmp (macOS: /private/tmp).
 const fixture = fs.mkdtempSync(
-  path.join(process.cwd(), ".clipper-roundup-test-")
+  path.join(os.homedir(), ".clipper-roundup-test-")
 );
 process.env.PROJECT_DIR = fixture;
 

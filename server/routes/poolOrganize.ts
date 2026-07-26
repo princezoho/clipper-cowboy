@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { CAPTION_TMP_DIR, config } from "../config.js";
+import { config } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import {
   getOpenAI,
@@ -154,7 +154,7 @@ async function analyzeOne(
 
   const times = pickFrameTimes(duration);
   const cacheKey = crypto.randomBytes(8).toString("hex");
-  const tmpDir = path.join(CAPTION_TMP_DIR, `pool-org-${cacheKey}`);
+  const tmpDir = path.join(config.captionTmpDir, `pool-org-${cacheKey}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   const framePaths: string[] = [];
   try {

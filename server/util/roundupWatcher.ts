@@ -147,10 +147,30 @@ export class RoundupWatcher {
       await this.stopNow();
       return;
     }
-    const selected = dedupeRoundupWatchRoots(listAllowlistedWatchRoots(settings));
+    const allowlisted = listAllowlistedWatchRoots(settings);
+    const selected = dedupeRoundupWatchRoots(allowlisted);
     const roots = selected.roots.map((root) => root.path);
     if (roots.length === 0) {
       await this.stopNow();
+      // "Enabled but nothing watchable" used to be reported as a bare "off",
+      // indistinguishable from the user switching Roundup off. Name the
+      // rejected roots so GET /roundup/watcher can explain the state.
+      const rejected = allowlisted.filter(
+        (root) =>
+          settings.watchedRootIds.includes(root.id) &&
+          !settings.disabledRoots.includes(root.id)
+      );
+      this.lastError =
+        rejected.length === 0
+          ? null
+          : `Roundup is on but no root is watchable: ${rejected
+              .map(
+                (root) =>
+                  `${root.label} is ${
+                    root.allowed ? "missing" : "outside the Roundup allowlist"
+                  }`
+              )
+              .join("; ")}.`;
       return;
     }
     await this.stopNow();

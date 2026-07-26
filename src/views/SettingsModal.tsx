@@ -60,7 +60,9 @@ export default function SettingsModal({ current, onClose }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setNote(data.note ?? "Saved.");
+      // `note` is only present when the running server could not adopt the
+      // values; otherwise they are already live.
+      setNote(data.note ?? "Saved and applied.");
     } catch (err) {
       setError(String(err));
     } finally {

@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   config,
   isSupportedVideo,
-  POOL_CACHE_DIR,
+  onConfigReload,
   RESERVED_PROJECT_DIRS,
 } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
@@ -31,6 +31,15 @@ export interface PoolItem {
 }
 
 const idToPath = new Map<string, string>();
+
+// /api/video/:id streams whatever this map holds, so entries from a previous
+// project folder must not survive a PROJECT_DIR change. The next /api/pool
+// scan repopulates it from the new folder.
+onConfigReload({
+  apply: () => {
+    idToPath.clear();
+  },
+});
 
 export function resolvePoolId(id: string): string | null {
   const p = idToPath.get(id);
@@ -155,8 +164,6 @@ function listFolders(): string[] {
   return out;
 }
 
-const DURATIONS_PATH = config.durationsPath;
-
 interface DurationEntry {
   duration: number;
   size: number;
@@ -165,7 +172,7 @@ interface DurationEntry {
 
 function loadDurationCache(): Record<string, DurationEntry> {
   try {
-    return JSON.parse(fs.readFileSync(DURATIONS_PATH, "utf8"));
+    return JSON.parse(fs.readFileSync(config.durationsPath, "utf8"));
   } catch {
     return {};
   }
@@ -173,7 +180,7 @@ function loadDurationCache(): Record<string, DurationEntry> {
 
 function saveDurationCache(cache: Record<string, DurationEntry>) {
   try {
-    fs.writeFileSync(DURATIONS_PATH, JSON.stringify(cache));
+    fs.writeFileSync(config.durationsPath, JSON.stringify(cache));
   } catch {
     // ignore
   }
@@ -528,7 +535,7 @@ router.get("/thumb/:id", async (req, res) => {
   const t = Number(req.query.t ?? 1);
   const w = Number(req.query.w ?? 320);
   const cacheKey = `pool-${req.params.id}_${t.toFixed(2)}_${w}.jpg`;
-  const cachePath = path.join(POOL_CACHE_DIR, cacheKey);
+  const cachePath = path.join(config.thumbCacheDir, cacheKey);
   if (!fs.existsSync(cachePath)) {
     try {
       await extractFrameJpeg(file, t, cachePath, w);

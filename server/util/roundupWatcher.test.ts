@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type {
@@ -8,14 +9,21 @@ import type {
   RoundupSettings,
 } from "./roundup.js";
 
+// The fixture becomes PROJECT_DIR, so it has to satisfy the production watch
+// allowlist in roundup.ts: outside every FORBIDDEN_PREFIXES entry, and under
+// home or the project itself. That rules out both temp locations on macOS —
+// os.tmpdir() is /var/folders/... and /tmp resolves to /private/tmp — and it
+// rules out process.cwd(), which is only allowlisted when the checkout happens
+// to live under home. Home is the one parent allowlisted on every platform.
+const fixtureParent = os.homedir();
 const fixturePrefix = ".clipper-roundup-watcher-test-";
-for (const entry of fs.readdirSync(process.cwd())) {
+for (const entry of fs.readdirSync(fixtureParent)) {
   if (entry.startsWith(fixturePrefix)) {
-    fs.rmSync(path.join(process.cwd(), entry), { recursive: true, force: true });
+    fs.rmSync(path.join(fixtureParent, entry), { recursive: true, force: true });
   }
 }
 const fixture = fs.mkdtempSync(
-  path.join(process.cwd(), fixturePrefix)
+  path.join(fixtureParent, fixturePrefix)
 );
 process.env.PROJECT_DIR = fixture;
 process.env.DOTENV_CONFIG_PATH = "/dev/null";
@@ -64,6 +72,18 @@ test.after(async () => {
   // no delayed timer can recreate fixture metadata after teardown.
   await new Promise((resolve) => setTimeout(resolve, 350));
   fs.rmSync(fixture, { recursive: true, force: true });
+});
+
+test("fixture root satisfies the production watch allowlist", () => {
+  // Without this the watcher below selects zero roots and every status
+  // assertion reports "off", which reads like a readiness race rather than an
+  // unwatchable fixture location.
+  assert.equal(roundup.isAllowlistedWatchPath(fixture), true, fixture);
+  const root = roundup
+    .listAllowlistedWatchRoots(settings())
+    .find((candidate) => candidate.id === "project");
+  assert.equal(root?.allowed, true);
+  assert.equal(root?.exists, true);
 });
 
 test("overlapping active roots collapse to one recursive watcher", () => {
@@ -137,6 +157,29 @@ test("watcher errors surface a degraded, non-running status", async () => {
   assert.equal(watcher.status().running, false);
   assert.match(watcher.status().lastError ?? "", /handle exhaustion/);
   assert.equal(fake?.closed, true);
+});
+
+test("enabled with no watchable root explains the off state", async () => {
+  const approved: RoundupApprovedRoot = {
+    id: "droplet:outside",
+    label: "Outside fixture",
+    // Never under home and never under PROJECT_DIR, on any platform.
+    path: path.join(path.sep, "clipper-outside-allowlist-fixture"),
+    reason: "droplet",
+  };
+  const watcher = new RoundupWatcher(() => {
+    throw new Error("watch factory must not run without a watchable root");
+  });
+
+  roundup.writeRoundupSettings(settings([approved.id], [approved]));
+  await watcher.start();
+
+  const status = watcher.status();
+  assert.equal(status.state, "off");
+  assert.equal(status.running, false);
+  assert.equal(status.enabled, true);
+  assert.match(status.lastError ?? "", /no root is watchable/);
+  assert.match(status.lastError ?? "", /outside the Roundup allowlist/);
 });
 
 test("two external rename hops retain one UUID and complete trail", async () => {

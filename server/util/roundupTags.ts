@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../config.js";
+import { config, onConfigReload } from "../config.js";
 import {
   fingerprintFile,
   fingerprintKey,
@@ -36,7 +36,10 @@ interface TagStore {
   tags: RoundupTag[];
 }
 
-const TAGS_PATH = path.join(config.internalDir, "roundup-tags.json");
+// `let`, not `const`: the store lives in the project folder, which the
+// first-run wizard can change while the process is running. See the
+// onConfigReload hook below.
+let TAGS_PATH = path.join(config.internalDir, "roundup-tags.json");
 const MAX_PATHS = 40;
 
 let cache: TagStore | null = null;
@@ -118,6 +121,26 @@ export function flushTagsSync(): void {
     // observational — never block callers
   }
 }
+
+onConfigReload({
+  // Write pending identities back to the folder they describe *before* the
+  // paths move, otherwise the next flush would file them under the new project.
+  flush: () => {
+    flushTagsSync();
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+  },
+  apply: () => {
+    TAGS_PATH = path.join(config.internalDir, "roundup-tags.json");
+    cache = null;
+    dirty = false;
+    pathIndex = new Map();
+    currentPathIndex = new Map();
+    fingerprintIndex = new Map();
+  },
+});
 
 function pushPath(tag: RoundupTag, abs: string): void {
   const resolved = path.resolve(abs);

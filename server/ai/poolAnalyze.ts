@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { CAPTION_TMP_DIR, SUPPRESSED_TAGS } from "../config.js";
+import { config, SUPPRESSED_TAGS } from "../config.js";
 import { extractFrameJpeg } from "../ffmpeg.js";
 import { getOpenAI } from "../openai.js";
 
@@ -110,7 +110,7 @@ export async function analyzeSource(
 
   const times = pickFrameTimes(durationSec);
   const cacheKey = crypto.randomBytes(8).toString("hex");
-  const tmpDir = path.join(CAPTION_TMP_DIR, `srcmeta-${cacheKey}`);
+  const tmpDir = path.join(config.captionTmpDir, `srcmeta-${cacheKey}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   const framePaths: string[] = [];
   try {

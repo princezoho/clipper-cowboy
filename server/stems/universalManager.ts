@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
-import { config } from "../config.js";
+import { config, onConfigReload } from "../config.js";
 import { FFMPEG_PATH, probeFile, run } from "../ffmpeg.js";
 import { appendRoundupLineage } from "../util/roundup.js";
 import {
@@ -127,7 +127,10 @@ interface PreparedStem {
   alignment: string;
 }
 
-const JOBS_PATH = path.join(config.internalDir, "universal-stem-jobs.json");
+// `let`, not `const`: project-local, and the first-run wizard can change the
+// project folder while the process is running. See the onConfigReload hook at
+// the bottom of this file.
+let JOBS_PATH = path.join(config.internalDir, "universal-stem-jobs.json");
 const TERMINAL = new Set<UniversalStemJobStatus>([
   "ready",
   "setup_required",
@@ -560,6 +563,10 @@ export class UniversalStemManager {
       configResolver: options.configResolver,
       sessionFactory: options.sessionFactory,
     };
+    this.hydrate();
+  }
+
+  private hydrate(): void {
     for (const job of readJobs().slice(-200)) {
       if (!TERMINAL.has(job.status)) {
         job.status = "interrupted";
@@ -571,6 +578,21 @@ export class UniversalStemManager {
       this.jobs.set(job.id, job);
     }
     this.persist();
+  }
+
+  /** Re-read job history after the project folder changed underneath us. */
+  reloadFromProjectDir(): void {
+    this.jobs.clear();
+    this.hydrate();
+  }
+
+  /** True while a separation could still write into the current project folder. */
+  hasActiveJobs(): boolean {
+    if (this.current) return true;
+    for (const job of this.jobs.values()) {
+      if (!TERMINAL.has(job.status)) return true;
+    }
+    return false;
   }
 
   list(packageId?: string): UniversalStemJob[] {
@@ -1080,6 +1102,13 @@ export class UniversalStemManager {
 }
 
 export const universalStemManager = new UniversalStemManager();
+
+onConfigReload({
+  apply: () => {
+    JOBS_PATH = path.join(config.internalDir, "universal-stem-jobs.json");
+    universalStemManager.reloadFromProjectDir();
+  },
+});
 
 export const universalStemTestHelpers = {
   alignmentTolerance,

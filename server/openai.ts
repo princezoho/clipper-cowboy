@@ -1,9 +1,17 @@
 import OpenAI from "openai";
 import type { Response } from "express";
 import fs from "node:fs";
-import { config, SUPPRESSED_TAGS } from "./config.js";
+import { config, onConfigReload, SUPPRESSED_TAGS } from "./config.js";
 
 let client: OpenAI | null = null;
+
+// The client caches the key it was constructed with, so a key saved from the
+// wizard or Settings has to invalidate it.
+onConfigReload({
+  apply: () => {
+    client = null;
+  },
+});
 
 export const OPENAI_BILLING_URL =
   "https://platform.openai.com/settings/organization/billing/overview";

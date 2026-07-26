@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../config.js";
+import { config, onConfigReload } from "../config.js";
 
 /*
  * Append-only session activity log. One JSON event per line, written to
@@ -43,7 +43,9 @@ export interface ActivityEvent {
   payload: Record<string, unknown>;
 }
 
-const ACTIVITY_PATH = path.join(config.internalDir, "activity.log.jsonl");
+// `let`, not `const`: derived from the project folder, which the first-run
+// wizard can change while the process is running. See onConfigReload below.
+let ACTIVITY_PATH = path.join(config.internalDir, "activity.log.jsonl");
 
 export function appendActivity(
   kind: ActivityKind,
@@ -88,4 +90,11 @@ export async function readActivityTail(limit: number): Promise<ActivityEvent[]> 
   return events;
 }
 
-export const ACTIVITY_LOG_PATH = ACTIVITY_PATH;
+export let ACTIVITY_LOG_PATH = ACTIVITY_PATH;
+
+onConfigReload({
+  apply: () => {
+    ACTIVITY_PATH = path.join(config.internalDir, "activity.log.jsonl");
+    ACTIVITY_LOG_PATH = ACTIVITY_PATH;
+  },
+});

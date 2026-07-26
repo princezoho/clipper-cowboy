@@ -22,12 +22,8 @@ import poolAnalyzeRouter from "./routes/poolAnalyze.js";
 import poolOrganizeRouter from "./routes/poolOrganize.js";
 import stemsRouter from "./routes/stems.js";
 import universalClipperRouter from "./routes/universalClipper.js";
-import {
-  cleanSuppressedTagsInSidecars,
-  migrateLegacyLibrary,
-} from "./util/migrate.js";
 import { publicError } from "./util/publicError.js";
-import { rebuildShotlistNow } from "./util/shotlist.js";
+import { bootstrapProjectDir } from "./util/projectBootstrap.js";
 import { universalStemManager } from "./stems/universalManager.js";
 import { roundupWatcher } from "./util/roundupWatcher.js";
 import { flushTagsSync } from "./util/roundupTags.js";
@@ -131,13 +127,10 @@ if (apiToken) {
 }
 
 app.get("/api/health", (_req, res) => {
-  // `projectDirConfigured` is true iff the user has explicitly pointed the
-  // app at a folder (PROJECT_DIR / POOL_DIR set in .env). When false, the UI
-  // renders the first-run onboarding screen instead of the empty pool grid.
-  const projectDirConfigured = Boolean(
-    (process.env.PROJECT_DIR ?? "").trim() ||
-      (process.env.POOL_DIR ?? "").trim()
-  );
+  // Everything here comes from the live config, which POST /api/settings
+  // rebuilds in place. Reading `process.env` directly here is what used to trap
+  // first-run users in the wizard: .env had been written, but this process had
+  // never been told, so `projectDirConfigured` stayed false forever.
   res.json({
     ok: true,
     service: "clipper-cowboy",
@@ -151,7 +144,9 @@ app.get("/api/health", (_req, res) => {
     shotlistMd: config.shotlistMdPath,
     shotlistCsv: config.shotlistCsvPath,
     hasOpenAIKey: Boolean(config.openaiApiKey),
-    projectDirConfigured,
+    // When false, the UI renders the first-run onboarding screen instead of the
+    // empty pool grid.
+    projectDirConfigured: config.projectDirConfigured,
   });
 });
 
@@ -213,21 +208,7 @@ const httpServer = app.listen(config.port, config.host, () => {
   console.log(`  images/     = ${config.imagesDir}`);
   console.log(`  OpenAI key  = ${config.openaiApiKey ? "set" : "(missing)"}`);
 
-  try {
-    migrateLegacyLibrary();
-  } catch (err) {
-    console.error("[migrate] failed:", err);
-  }
-  try {
-    cleanSuppressedTagsInSidecars();
-  } catch (err) {
-    console.error("[migrate] tag cleanup failed:", err);
-  }
-  try {
-    rebuildShotlistNow();
-  } catch (err) {
-    console.error("[shotlist] initial build failed:", err);
-  }
+  bootstrapProjectDir();
   void roundupWatcher.start().catch((err) => {
     console.error("[roundup-watcher] failed to start:", err);
   });

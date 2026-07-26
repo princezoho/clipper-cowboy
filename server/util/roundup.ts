@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { config, SUPPORTED_IMAGE_EXTS, SUPPORTED_VIDEO_EXTS } from "../config.js";
+import {
+  config,
+  onConfigReload,
+  SUPPORTED_IMAGE_EXTS,
+  SUPPORTED_VIDEO_EXTS,
+} from "../config.js";
 import {
   findTagForPath,
   followTrackableMove,
@@ -387,9 +392,12 @@ function isApprovedRootReason(value: unknown): value is RoundupApprovedRoot["rea
     APPROVED_ROOT_REASONS.has(value as RoundupApprovedRoot["reason"]);
 }
 
-const SETTINGS_PATH = path.join(config.internalDir, "roundup-settings.json");
-const ROUNDUP_PATH = path.join(config.internalDir, "roundup.log.jsonl");
-const ROUNDUP_LINEAGE_PATH = path.join(config.internalDir, "roundup-lineage.jsonl");
+// `let`, not `const`: all three live inside the project folder, which the
+// first-run wizard can change while the process is running. See the
+// onConfigReload hook at the bottom of this file.
+let SETTINGS_PATH = path.join(config.internalDir, "roundup-settings.json");
+let ROUNDUP_PATH = path.join(config.internalDir, "roundup.log.jsonl");
+let ROUNDUP_LINEAGE_PATH = path.join(config.internalDir, "roundup-lineage.jsonl");
 
 const DEFAULT_SETTINGS: RoundupSettings = {
   enabled: true,
@@ -1026,9 +1034,23 @@ export async function lookupRoundup(
   return candidates.slice(0, limit);
 }
 
-export const ROUNDUP_LOG_PATH = ROUNDUP_PATH;
-export const ROUNDUP_SETTINGS_PATH = SETTINGS_PATH;
-export const ROUNDUP_LINEAGE_LOG_PATH = ROUNDUP_LINEAGE_PATH;
+export let ROUNDUP_LOG_PATH = ROUNDUP_PATH;
+export let ROUNDUP_SETTINGS_PATH = SETTINGS_PATH;
+export let ROUNDUP_LINEAGE_LOG_PATH = ROUNDUP_LINEAGE_PATH;
+
+onConfigReload({
+  apply: () => {
+    SETTINGS_PATH = path.join(config.internalDir, "roundup-settings.json");
+    ROUNDUP_PATH = path.join(config.internalDir, "roundup.log.jsonl");
+    ROUNDUP_LINEAGE_PATH = path.join(config.internalDir, "roundup-lineage.jsonl");
+    ROUNDUP_LOG_PATH = ROUNDUP_PATH;
+    ROUNDUP_SETTINGS_PATH = SETTINGS_PATH;
+    ROUNDUP_LINEAGE_LOG_PATH = ROUNDUP_LINEAGE_PATH;
+    // Dedupe keys are absolute paths under the previous folder; nothing there
+    // can legitimately suppress an event in the new one.
+    recentRecordKeys.clear();
+  },
+});
 
 /*
  * TODO(roundup-cloud): Dropbox / Google Drive watchers

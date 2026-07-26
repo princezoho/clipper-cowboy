@@ -215,7 +215,10 @@ function AppInner() {
     };
   }, [health?.projectDirConfigured]);
 
-  async function refreshAfterOnboarding() {
+  // Returns whether the server is now actually pointed at a project folder, so
+  // the wizard can say something useful instead of silently re-rendering if the
+  // save did not take effect.
+  async function refreshAfterOnboarding(): Promise<boolean> {
     try {
       const h = await fetchHealth();
       setHealth(h);
@@ -223,9 +226,12 @@ function AppInner() {
         reloadPool();
         reloadLibrary();
         reloadImages();
+        return true;
       }
+      return false;
     } catch (err) {
       setError(String(err));
+      return false;
     }
   }
 

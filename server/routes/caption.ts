@@ -2,7 +2,7 @@ import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { CAPTION_TMP_DIR } from "../config.js";
+import { config } from "../config.js";
 import { extractFrameJpeg, getDuration } from "../ffmpeg.js";
 import { clampSegmentToDuration } from "../util/timeRange.js";
 import { resolvePoolId } from "./pool.js";
@@ -26,11 +26,11 @@ const SAMPLE_FRAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FRAMES_PER_CALL = 3;
 
 function cleanOldCaptionDirs() {
-  if (!fs.existsSync(CAPTION_TMP_DIR)) return;
+  if (!fs.existsSync(config.captionTmpDir)) return;
   const cutoff = Date.now() - SAMPLE_FRAME_TTL_MS;
-  for (const name of fs.readdirSync(CAPTION_TMP_DIR)) {
+  for (const name of fs.readdirSync(config.captionTmpDir)) {
     if (!name.startsWith("frames-")) continue;
-    const dir = path.join(CAPTION_TMP_DIR, name);
+    const dir = path.join(config.captionTmpDir, name);
     try {
       const stat = fs.statSync(dir);
       if (stat.mtimeMs < cutoff) {
@@ -95,7 +95,7 @@ router.post("/caption", async (req, res) => {
   const cacheKey = `frames-${sourceId}-${Math.round(inA * 1000)}-${Math.round(
     outA * 1000
   )}`;
-  const dir = path.join(CAPTION_TMP_DIR, cacheKey);
+  const dir = path.join(config.captionTmpDir, cacheKey);
   fs.mkdirSync(dir, { recursive: true });
 
   const framePaths: string[] = [];
@@ -136,7 +136,7 @@ router.get("/caption-frames/:cacheKey/:name", (req, res) => {
     res.status(400).end();
     return;
   }
-  const p = path.join(CAPTION_TMP_DIR, dir, safe);
+  const p = path.join(config.captionTmpDir, dir, safe);
   if (!fs.existsSync(p)) {
     res.status(404).end();
     return;

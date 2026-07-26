@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { config, SUPPORTED_IMAGE_EXTS, SUPPORTED_VIDEO_EXTS } from "../config.js";
+import {
+  config,
+  onConfigReload,
+  SUPPORTED_IMAGE_EXTS,
+  SUPPORTED_VIDEO_EXTS,
+} from "../config.js";
 import {
   ROUNDUP_SKIP_DIR_NAMES,
   SUPPORTED_AUDIO_EXTS,
@@ -62,11 +67,14 @@ export interface RoundupInventoryCheckpoint {
   directories: { relativeDir: string; afterName: string | null }[];
 }
 
-const OUTPUT_DIR = path.join(config.derivedDir, "roundup");
-const HANDOFF_DIR = path.join(config.stemsDir, "handoffs");
+// `let`, not `const`: export/handoff destinations and the job checkpoint all
+// live inside the project folder, which the first-run wizard can change while
+// the process is running. See the onConfigReload hook at the bottom.
+let OUTPUT_DIR = path.join(config.derivedDir, "roundup");
+let HANDOFF_DIR = path.join(config.stemsDir, "handoffs");
 const MAX_JOB_ITEMS = 5_000;
 const MAX_RETAINED_ITEMS = 100;
-const JOBS_PATH = path.join(config.internalDir, "roundup-inventory-jobs.json");
+let JOBS_PATH = path.join(config.internalDir, "roundup-inventory-jobs.json");
 /** Darwin UF_OFFLINE: data is not resident and reading may trigger hydration. */
 const DARWIN_UF_OFFLINE = 0x40000000;
 
@@ -314,9 +322,32 @@ export class RoundupInventoryManager {
   private jobs = new Map<string, RoundupInventoryJob>();
   private cancelled = new Set<string>();
   private paused = new Set<string>();
+  /** Tests pin a fixture file; the singleton follows the live project folder. */
+  private readonly pinnedJobsPath?: string;
 
-  constructor(private readonly jobsPath = JOBS_PATH) {
+  constructor(jobsPath?: string) {
+    this.pinnedJobsPath = jobsPath;
     this.load();
+  }
+
+  private get jobsPath(): string {
+    return this.pinnedJobsPath ?? JOBS_PATH;
+  }
+
+  /** Re-read the checkpoint after the project folder changed underneath us. */
+  reloadFromProjectDir(): void {
+    this.jobs.clear();
+    this.cancelled.clear();
+    this.paused.clear();
+    this.load();
+  }
+
+  /** True while a scan could still write to the current project folder. */
+  hasActiveJobs(): boolean {
+    for (const job of this.jobs.values()) {
+      if (job.status === "running" || job.status === "queued") return true;
+    }
+    return false;
   }
 
   private load(): void {
@@ -596,3 +627,12 @@ export class RoundupInventoryManager {
 }
 
 export const roundupInventory = new RoundupInventoryManager();
+
+onConfigReload({
+  apply: () => {
+    OUTPUT_DIR = path.join(config.derivedDir, "roundup");
+    HANDOFF_DIR = path.join(config.stemsDir, "handoffs");
+    JOBS_PATH = path.join(config.internalDir, "roundup-inventory-jobs.json");
+    roundupInventory.reloadFromProjectDir();
+  },
+});

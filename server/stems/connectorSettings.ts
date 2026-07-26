@@ -1,14 +1,17 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../config.js";
+import { config, onConfigReload } from "../config.js";
 import {
   validateStemMcpEntry,
   type StemMcpConfig,
 } from "./mcpClient.js";
 
-const SETTINGS_PATH = path.join(config.internalDir, "integrations.json");
-const VERIFICATION_PATH = path.join(
+// `let`, not `const`: both are project-local, and the first-run wizard can
+// change the project folder while the process is running. Callers reach them
+// through default parameters, which re-read the binding on every call.
+let SETTINGS_PATH = path.join(config.internalDir, "integrations.json");
+let VERIFICATION_PATH = path.join(
   config.internalDir,
   "stem-runtime-verification.json"
 );
@@ -176,6 +179,20 @@ export function recordLiveFixtureVerification(
 }
 
 export const stemConnectorSettingsPaths = {
-  settings: SETTINGS_PATH,
-  verification: VERIFICATION_PATH,
+  get settings(): string {
+    return SETTINGS_PATH;
+  },
+  get verification(): string {
+    return VERIFICATION_PATH;
+  },
 };
+
+onConfigReload({
+  apply: () => {
+    SETTINGS_PATH = path.join(config.internalDir, "integrations.json");
+    VERIFICATION_PATH = path.join(
+      config.internalDir,
+      "stem-runtime-verification.json"
+    );
+  },
+});

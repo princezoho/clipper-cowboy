@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { FsCheckResponse, checkFsPath, saveSettings } from "../lib/api";
+import {
+  FsCheckResponse,
+  checkFsPath,
+  fetchSettings,
+  saveSettings,
+} from "../lib/api";
 
 interface Props {
   /** Current PROJECT_DIR resolved server-side (a sensible default the user can keep). */
   defaultProjectDir: string;
-  /** Fires after a successful save so the parent can reload health + pool. */
-  onComplete: () => void;
+  /**
+   * Fires after a successful save so the parent can reload health + pool.
+   * Resolves to whether the server now reports a configured project folder.
+   */
+  onComplete: () => Promise<boolean>;
 }
 
 /**
@@ -26,6 +34,23 @@ export default function OnboardingScreen({
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restartNote, setRestartNote] = useState<string | null>(null);
+
+  // If .env already records a folder, show that rather than the built-in
+  // default — otherwise a reload silently discards what the user just saved.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSettings()
+      .then((s) => {
+        if (!cancelled && s.savedProjectDir) setProjectDir(s.savedProjectDir);
+      })
+      .catch(() => {
+        // Non-fatal: the field keeps the server-resolved default.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Debounced path validation. Cheap stat call; no race-condition headaches.
   useEffect(() => {
@@ -70,14 +95,22 @@ export default function OnboardingScreen({
     if (!canSubmit) return;
     setSaving(true);
     setError(null);
+    setRestartNote(null);
     try {
       const body: { projectDir?: string; openaiApiKey?: string } = {
         projectDir: projectDir.trim(),
       };
       const k = apiKey.trim();
       if (k) body.openaiApiKey = k;
-      await saveSettings(body);
-      onComplete();
+      const result = await saveSettings(body);
+      const fallbackNote =
+        "Saved to .env. Stop the app in its terminal with Ctrl+C and start it " +
+        "again (`npm start`) to use the new project folder.";
+      if (result.applied && (await onComplete())) return;
+      // Either the server saved the folder without adopting it, or it claimed
+      // to and health disagrees. Say so with the exact command rather than
+      // re-rendering this screen as if nothing had happened.
+      setRestartNote(result.note ?? fallbackNote);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -178,6 +211,13 @@ export default function OnboardingScreen({
           {error && (
             <div className="rounded-md bg-red-950/50 px-3 py-2 text-sm text-red-200">
               {error}
+            </div>
+          )}
+
+          {restartNote && (
+            <div className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              <div className="font-medium">One more step</div>
+              <div className="text-amber-200/90">{restartNote}</div>
             </div>
           )}
 

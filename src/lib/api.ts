@@ -198,10 +198,37 @@ export async function checkFsPath(p: string): Promise<FsCheckResponse> {
   );
 }
 
+export interface SettingsResponse {
+  projectDir: string;
+  projectDirConfigured: boolean;
+  /** What .env holds, so the wizard can echo back a previous save. */
+  savedProjectDir: string | null;
+  hasOpenAIKey: boolean;
+}
+
+export async function fetchSettings(): Promise<SettingsResponse> {
+  return jsonOrThrow(await fetch("/api/settings"));
+}
+
+export interface SaveSettingsResult {
+  ok: boolean;
+  /** True when the running server adopted the values; no restart needed. */
+  applied: boolean;
+  restartRequired?: boolean;
+  /** Present whenever `applied` is false: exact instruction for the user. */
+  note?: string;
+  pendingProjectDir?: string;
+  current: {
+    projectDir: string;
+    projectDirConfigured: boolean;
+    hasOpenAIKey: boolean;
+  };
+}
+
 export async function saveSettings(input: {
   projectDir?: string;
   openaiApiKey?: string;
-}): Promise<{ ok: boolean; note?: string }> {
+}): Promise<SaveSettingsResult> {
   return jsonOrThrow(
     await fetch("/api/settings", {
       method: "POST",
