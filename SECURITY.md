@@ -1,5 +1,30 @@
 # Security Notes for Clipper Cowboy
 
+## Reporting a vulnerability
+
+Please do not disclose a suspected vulnerability in a public issue, discussion,
+social post, or shared reproduction containing private media or credentials.
+Use GitHub's private vulnerability reporting form:
+
+<https://github.com/princezoho/clipper-cowboy/security/advisories/new>
+
+Include the affected commit/version, operating system, reproduction steps,
+impact, and the smallest safe proof of concept. Remove API keys, personal paths,
+private footage, and project metadata. Maintainers may investigate and respond
+when available, but this community project makes no response-time, remediation,
+embargo, bounty, support, or disclosure-timeline guarantee.
+
+## Supported versions and threat model
+
+Security fixes target the latest commit on the default branch. Older commits,
+forks, modified builds, third-party packages, and unofficial binaries are not
+supported.
+
+Clipper Cowboy is designed for one trusted local user on a trusted machine. Its
+HTTP API must remain bound to loopback. Internet-facing, multi-user, shared-host,
+container-service, tunnelled, proxied, or otherwise remotely exposed deployments
+are outside the security model.
+
 ## What this repo is trying to protect
 
 - **API credentials must never be committed to git.**
@@ -30,20 +55,33 @@
   - MCP has no key, settings, shell, delete, reveal, trash, or generic file tool.
   - AI analysis requires explicit confirmation that sampled frames will be
     uploaded to OpenAI.
-- **Audio splitting is a managed local capability.**
-  - It uses only Clipper-controlled engine and model directories; users cannot
-    select an executable, checkout, or output directory.
-  - The engine receives only an allowlisted environment. `OPENAI_API_KEY`,
+- **Audio splitting uses an explicitly configured local integration.**
+  - Universal Clipper accepts only a validated official Stem Studio MCP entry;
+    selecting a checkout still means trusting local code that runs with the
+    current user's filesystem permissions.
+  - The child receives only an allowlisted environment. `OPENAI_API_KEY`,
     `CLIPPER_API_TOKEN`, proxy credentials, and `.env` contents are not
     forwarded.
-  - Environment installation is initiated only by the explicit in-app install
-    action; model downloads occur on first requested separation.
-  - Outputs are validated inside `derived/stems/.jobs/` and renamed into place
-    only after the producer stops; existing results are never overwritten.
+  - Clipper does not install Stem Studio dependencies, invoke
+    `setup_environment`, or download models.
+  - Outputs are validated in unique contained destinations before publication;
+    existing results are never silently overwritten.
   - Stem job status is observable when Clipper is attached to its UI server.
     Clipper does not expose a cancellation operation there: it cannot safely
     guarantee lifecycle ownership of an independently running server. A future
     cancellation capability must only be added when that ownership is safe.
+
+## User responsibility and limitation of liability
+
+Users must keep backups, protect configured credentials, review file-operation
+previews, assess third-party code and model licenses, and test the software in
+their own environment. Passing this repository's checks is not a security audit,
+certification, warranty, or guarantee that every vulnerability or data-loss
+condition has been found.
+
+The project is provided under the MIT License without warranty and with the
+license's limitation of liability. See [DISCLAIMER.md](./DISCLAIMER.md) for the
+plain-language risk, responsibility, third-party, and compatibility notice.
 
 ## For public release preparation
 

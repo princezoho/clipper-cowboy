@@ -113,7 +113,7 @@ else
 fi
 
 printf "4) Validate required docs exist...\n"
-for f in README.md SECURITY.md THIRD_PARTY_NOTICES.md AGENTS.md mcp/README.md docs/INTEGRATIONS.md docs/UNIVERSAL-CLIPPER.md adobe-premiere/README.md .env.example .github/CODEOWNERS; do
+for f in README.md SECURITY.md DISCLAIMER.md LICENSE THIRD_PARTY_NOTICES.md AGENTS.md mcp/README.md docs/INTEGRATIONS.md docs/UNIVERSAL-CLIPPER.md adobe-premiere/README.md .env.example .github/CODEOWNERS; do
    if [ -f "$f" ]; then
      echo "   OK: $f exists"
    else
