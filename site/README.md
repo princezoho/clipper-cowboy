@@ -27,15 +27,13 @@ domain or any other subdirectory without edits.
 
 ## Deploy
 
-`.github/workflows/deploy-landing.yml` is manual-only and publishes this folder.
-Before the first run, someone with repository admin access must do the one-time
-account step:
+`.github/workflows/deploy-landing.yml` publishes this folder. Pages is enabled
+with **Settings > Pages > Source = GitHub Actions**, and the workflow runs on
+every push to `main` that touches `site/**`. The path filter keeps unrelated app
+and server commits from queueing a deployment of identical bytes.
 
-1. Repository **Settings > Pages**, set **Source** to **GitHub Actions**.
-2. Open the **Actions** tab and run **Deploy landing site** with **Run workflow**.
-
-Until step 1 is done the workflow fails at the Configure Pages step. Nothing in
-this repository can enable Pages on its own.
+**Run workflow** on the **Actions** tab still works, for republishing without a
+`site/` change.
 
 The contents of `site/` can also be dropped on any other static host, including
 Cloudflare Pages, Netlify, or existing Jeje Studios hosting.
@@ -114,9 +112,52 @@ Each one ships as both `.webp` and `.png` and is wired up with `<picture>`:
 ```
 
 Every browser in the support matrix takes the WebP, so the PNGs cost no
-bandwidth. They are kept because the `og:image` and `twitter:image` cards point
-at `hero-pool.png`, since some social crawlers still reject WebP, and because a
-text-only page would be a poor failure mode if a client ever did skip it.
+bandwidth. They are kept because a text-only page would be a poor failure mode
+if a client ever did skip the WebP, and because `og-card` is cropped from
+`hero-pool.png`.
+
+## Social card
+
+`og:image` and `twitter:image` point at a purpose-built card, not at a product
+screenshot. A screenshot fails as a card: the networks crop to 1.91:1, and 20
+clip tiles are unreadable at the roughly 400px a feed actually renders.
+
+| File            | Purpose                       | Dimensions | Size   |
+| --------------- | ----------------------------- | ---------- | ------ |
+| `og-card.html`  | source, screenshotted at 1:1  | 1200x630   | 6 KB   |
+| `og-card.png`   | lossless export               | 1200x630   | 338 KB |
+| `og-card.jpg`   | what crawlers fetch           | 1200x630   | 129 KB |
+
+The JPEG is wired up because it is a third of the PNG with no visible
+difference, and every crawler accepts JPEG. The PNG is kept as the master for
+any future crop or resize.
+
+`og-card.html` is standalone: it repeats the brand faces, the hero gradient, and
+the palette as literal values so a later change to `styles.css` cannot silently
+alter a card that is already circulating. Edit that file, then regenerate both
+exports from the repository root:
+
+```sh
+python3 -m http.server 4173 --directory site &
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
+  --window-size=1200,630 --virtual-time-budget=4000 \
+  --screenshot=site/media/og-card.png \
+  http://localhost:4173/media/og-card.html
+ffmpeg -y -i site/media/og-card.png -compression_level 100 -pred mixed /tmp/og.png
+mv /tmp/og.png site/media/og-card.png
+ffmpeg -y -i site/media/og-card.png -q:v 2 -pix_fmt yuvj444p site/media/og-card.jpg
+```
+
+The page is served over HTTP rather than opened as a `file://` URL so the brand
+fonts load. `--force-device-scale-factor=1` is what guarantees exactly 1200x630
+on a Retina display. The second `ffmpeg` pass keeps 4:4:4 chroma, so the cream
+type on the dark ground stays crisp. No `@font-face` rule, font file, or
+existing screenshot is touched by this process.
+
+After deploying, re-fetch the card on the networks that cache it, at
+[cards-dev.twitter.com/validator](https://cards-dev.twitter.com/validator) and
+[developers.facebook.com/tools/debug](https://developers.facebook.com/tools/debug/).
 
 The hero image loads eagerly and is preloaded. The three below the fold use
 `loading="lazy"`. Every `img` carries `width` and `height` so the layout does

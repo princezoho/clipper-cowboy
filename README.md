@@ -152,12 +152,16 @@ metadata live in your project folder, and no hosted account is required. OpenAI
 features are optional and require an explicit configured key; MCP analysis
 requires confirmation before sampled frames leave the machine. Do not expose the
 local API through a tunnel or reverse proxy. See [SECURITY.md](./SECURITY.md).
+Use is at your own risk; review [DISCLAIMER.md](./DISCLAIMER.md) before relying
+on Clipper Cowboy for production media or third-party integrations.
 
 ## Project status
 
 Clipper Cowboy is a working local-first beta, not a hosted SaaS. Contributions,
 bug reports, and thoughtful workflow feedback are welcome; see
 [CONTRIBUTING.md](./CONTRIBUTING.md) and [SUPPORT.md](./SUPPORT.md).
+Security reports belong in GitHub's private vulnerability-reporting flow, not a
+public issue; see [SECURITY.md](./SECURITY.md).
 
 ## Detailed reference
 

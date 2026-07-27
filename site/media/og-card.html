@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Clipper Cowboy social card source, 1200x630</title>
+    <!-- Source for media/og-card.png and media/og-card.jpg. Not linked from the
+         site: it exists so the card can be regenerated instead of re-drawn.
+         Regenerate with the command in site/README.md, which serves this folder
+         and screenshots this page at exactly 1200x630 in headless Chrome.
+         Values here are literal rather than var() so this file stays standalone
+         and a change to styles.css cannot silently alter a published card. -->
+    <style>
+      /* Same brand faces as the site, loaded relative to this file. */
+      @font-face {
+        font-family: "Wantedo";
+        src: url("./fonts/Wantedo.woff2") format("woff2"),
+             url("./fonts/Wantedo.otf") format("opentype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Garamond Brand";
+        src: url("./fonts/Garamond.woff2") format("woff2"),
+             url("./fonts/Garamond.otf") format("opentype");
+        font-weight: 400 700;
+        font-style: normal;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #17120e; }
+
+      /* The card is a fixed 1200x630 box that exactly fills the capture
+         viewport, so no scrollbar or rounding error can reach the edges. */
+      .card {
+        position: relative;
+        display: flex;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        color: #fff5df;
+        background: #17120e;
+        font-family: "Garamond Brand", Georgia, serif;
+      }
+      /* Hero gradient from the landing page, so the card and the page a viewer
+         lands on share the same light. */
+      .card::before {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        content: "";
+        opacity: .7;
+        background:
+          radial-gradient(circle at 78% 44%, rgba(145, 46, 28, .3), transparent 36%),
+          linear-gradient(115deg, #120d0a 11%, #25170f 100%);
+      }
+      /* The page's film grain is deliberately not repeated here. It is
+         invisible once a feed scales the card to about a third of this size,
+         and as incompressible noise it roughly doubled both exports. */
+
+      .copy {
+        position: relative;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        width: 700px;
+        padding: 54px 30px 52px 72px;
+      }
+
+      .brand { display: flex; align-items: center; gap: 18px; }
+      /* The mark is dark artwork, inverted to cream the same way the site
+         header does it. */
+      .brand img { display: block; width: 68px; height: auto; filter: brightness(0) invert(1); }
+      .brand span {
+        font: 700 23px/1 Arial, Helvetica, sans-serif;
+        letter-spacing: .19em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 26px 0 0;
+        font: 400 84px/.84 "Wantedo", Rockwell, Georgia, serif;
+        letter-spacing: .01em;
+        text-transform: uppercase;
+      }
+      .deck {
+        max-width: 560px;
+        margin: 26px 0 0;
+        color: #d8c294;
+        font-size: 27px;
+        line-height: 1.26;
+      }
+
+      .footnote { display: flex; align-items: center; gap: 16px; }
+      .footnote i { width: 54px; height: 2px; background: #e5a326; }
+      .footnote span {
+        color: #e9d7a8;
+        font: 700 18px/1 Arial, Helvetica, sans-serif;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+      }
+
+      /* Product detail: a hard zoom on two columns of the Pool grid, bleeding
+         off the right edge. Tiles land at 335px wide, so a clip thumbnail and
+         its amber coverage bar still read in a feed thumbnail, where the full
+         20-tile grid would turn to mush. Offsets are the crop origin in the
+         3200x2000 source multiplied by the 0.62 display scale. */
+      .detail { position: absolute; z-index: 1; top: 0; right: 0; bottom: 0; width: 460px; overflow: hidden; }
+      .detail img {
+        position: absolute;
+        top: -272px;
+        left: -916px;
+        display: block;
+        width: 1984px;
+        height: auto;
+      }
+      /* Left edge dissolves into the background so the crop reads as part of
+         the card rather than a pasted rectangle. The first stop stays opaque
+         far enough in to bury the sliver of the neighbouring tile column. */
+      .detail::after {
+        position: absolute;
+        z-index: 2;
+        inset: 0;
+        content: "";
+        background:
+          linear-gradient(90deg, #17120e 0, #17120e 11%, rgba(23, 18, 14, .5) 23%, transparent 46%),
+          linear-gradient(270deg, rgba(23, 18, 14, .5) 0, transparent 16%),
+          linear-gradient(100deg, rgba(229, 163, 38, .1), transparent 40%);
+      }
+
+      /* Amber baseline. At feed size this is the first thing that identifies
+         the card as ours. */
+      .rule { position: absolute; z-index: 5; right: 0; bottom: 0; left: 0; height: 8px; background: linear-gradient(90deg, #e5a326, #8d2f20); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="detail">
+        <img src="./hero-pool.png" alt="" />
+      </div>
+      <div class="copy">
+        <p class="brand"><img src="./logo.png" alt="" /><span>Clipper Cowboy</span></p>
+        <div>
+          <h1>Turn generations into coverage.</h1>
+          <p class="deck">The local shot library for creators building an IP.</p>
+        </div>
+        <p class="footnote"><i></i><span>Open source <span aria-hidden="true">&middot;</span> Runs on your machine</span></p>
+      </div>
+      <div class="rule"></div>
+    </div>
+  </body>
+</html>
