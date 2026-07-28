@@ -59,7 +59,7 @@ function revealHero() {
 }
 
 function revealSections() {
-  if (reducedMotion) {
+  if (reducedMotion || !("IntersectionObserver" in window)) {
     revealTargets.forEach((target) => target.classList.add(STAGE.visible));
     return;
   }
@@ -74,6 +74,18 @@ function revealSections() {
   }, OBSERVER);
 
   revealTargets.forEach((target) => observer.observe(target));
+
+  // A late-loading font or restored scroll position can occasionally move a
+  // target past the observer's threshold. Keep content readable even then.
+  window.setTimeout(() => {
+    revealTargets.forEach((target) => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 1.15 && rect.bottom > 0) {
+        target.classList.add(STAGE.visible);
+        observer.unobserve(target);
+      }
+    });
+  }, 1800);
 }
 
 function clamp(value, minimum, maximum) {
